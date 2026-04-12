@@ -7,8 +7,7 @@ The current public examples cover:
 - gene block construction
 - conditional generation
 - conditional distribution evaluation
-
-The batch effect correction and perturbation prediction modules are being organized for public release.
+- perturbation prediction
 
 ## Repository Layout
 
@@ -207,6 +206,51 @@ Evaluation outputs:
 - `distribution_alignment.csv`
 - `per_condition_metrics.csv`
 - `report.json`
+
+## Run Perturbation Prediction
+
+Perturbation prediction holds out one cell type at a time, trains (or loads) a SAVE model on the remaining cells, predicts the stimulated expression from control cells, and evaluates against ground truth.
+
+The input `.h5ad` should contain:
+
+- `adata.obs["cell_type"]` — cell-type labels (configurable via `--label-key`)
+- `adata.obs["condition"]` — with at least a control and a target value (configurable via `--condition-key`)
+
+### Single Cell Type
+
+```bash
+uv run python examples/perturbation_prediction/run_single.py \
+  --data-path /path/to/data.h5ad \
+  --cell-type CD8T \
+  --output-dir ./outputs/perturbation_CD8T
+```
+
+Main outputs:
+
+- `train.h5ad` / `test.h5ad` — unscaled splits
+- `SAVE_pred.h5ad` — predicted stimulated cells
+- `train_scaler.pkl` — fitted MaxAbsScaler
+- `report.json` — parameters, timing, and evaluation metrics (R2, MSE, PCC)
+
+### Leave-One-Out Evaluation
+
+Loop over all cell types in the dataset:
+
+```bash
+uv run python examples/perturbation_prediction/run_leave_one_out.py \
+  --data-path /path/to/data.h5ad \
+  --output-dir ./outputs/perturbation_leave_one_out
+```
+
+Run only selected cell types:
+
+```bash
+uv run python examples/perturbation_prediction/run_leave_one_out.py \
+  --data-path /path/to/data.h5ad \
+  --cell-types CD8T NK B
+```
+
+In addition to per-cell-type outputs, the leave-one-out script produces a `summary.json` with per-cell-type and average R2, MSE, PCC, and prints a summary table to stdout.
 
 ## Citation
 
