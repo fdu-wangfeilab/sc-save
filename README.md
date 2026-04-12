@@ -8,6 +8,8 @@ The current public examples cover:
 - conditional generation
 - conditional distribution evaluation
 
+The batch effect correction and perturbation prediction modules are being organized for public release.
+
 ## Repository Layout
 
 ```text
@@ -50,15 +52,69 @@ Notes:
 
 ## Input Data Requirements
 
+Recommended workflow:
+
+1. If your input dataset has not been reorganized into semantic gene blocks yet, first run gene block construction.
+2. Use the resulting `processed.h5ad` as input to conditional generation.
+3. Use the generated `.h5ad` output together with the target `.h5ad` for evaluation.
+
+For gene block construction, you need:
+
+- an input `.h5ad` dataset
+- a pickle file containing a mapping `gene_name -> embedding vector`
+
+If canonical gene symbols are stored in a column such as `adata.var["feature_name"]`, pass that column through `--gene-name-col`.
+
 For conditional generation, the input `.h5ad` should satisfy:
 
 - gene dimension already matches the model-ready representation you want to train on
+- in the standard public workflow, this can be the `processed.h5ad` produced by gene block construction
 - `adata.obs["batch"]` exists
 - `adata.obs["cell_type"]` exists
 
 If your dataset already contains padded genes such as `pad_0`, the generation pipeline will detect them and trim them back out in the saved outputs.
 
 For evaluation, the target and generated `.h5ad` files should represent the same gene space. If the gene names contain the same set in different orders, the evaluation script will reorder the generated object automatically.
+
+## Run Gene Block Construction
+
+Use this step to reorder embedding-covered genes into balanced semantic blocks and pad the output to a full block size. The default public setting is `gene_block_size=3200`.
+
+```bash
+uv run python examples/gene_block_construction/run_pipeline.py \
+  --data-path /path/to/input.h5ad \
+  --gene-embedding-path /path/to/gene_embeddings.pkl \
+  --gene-block-size 3200 \
+  --output-dir ./outputs/gene_block_construction
+```
+
+If your dataset keeps gene symbols in `adata.var["feature_name"]`, add:
+
+```bash
+uv run python examples/gene_block_construction/run_pipeline.py \
+  --data-path /path/to/input.h5ad \
+  --gene-embedding-path /path/to/gene_embeddings.pkl \
+  --gene-name-col feature_name \
+  --gene-block-size 3200 \
+  --output-dir ./outputs/gene_block_construction
+```
+
+For a small startup check:
+
+```bash
+uv run python examples/gene_block_construction/run_pipeline.py \
+  --data-path /path/to/input.h5ad \
+  --gene-embedding-path /path/to/gene_embeddings.pkl \
+  --subset-cells 512 \
+  --gene-block-size 3200 \
+  --output-dir ./outputs/gene_block_smoke
+```
+
+Main outputs:
+
+- `processed.h5ad`
+- `var_metadata.csv`
+- `report.json`
 
 ## Run Conditional Generation
 
