@@ -13,7 +13,6 @@ import pandas as pd
 import scanpy as sc
 from pandas.api.types import (
     is_bool_dtype,
-    is_categorical_dtype,
     is_object_dtype,
     is_string_dtype,
 )
@@ -260,7 +259,7 @@ def sanitize_var_for_h5ad(var_df: pd.DataFrame):
     var_df = var_df.copy()
     for column in var_df.columns:
         series = var_df[column]
-        if is_categorical_dtype(series.dtype):
+        if isinstance(series.dtype, pd.CategoricalDtype):
             series = series.astype("object")
         if is_string_dtype(series.dtype) or is_object_dtype(series.dtype):
             var_df[column] = series.fillna("").map(str)

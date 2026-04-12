@@ -5,8 +5,6 @@ import torch.nn as nn
 import random
 import numpy as np
 from torch.distributions import Normal
-from timm.models.vision_transformer import Mlp
-from timm.models.vision_transformer import Attention
 try:
     from flash_attn import flash_attn_qkvpacked_func
 except ImportError:
@@ -23,7 +21,33 @@ def modulate(x, shift, scale):
     return res
 
 
-#
+class Mlp(nn.Module):
+    def __init__(
+        self,
+        in_features,
+        hidden_features=None,
+        out_features=None,
+        act_layer=nn.GELU,
+        drop=0.0,
+    ):
+        super().__init__()
+        hidden_features = hidden_features or in_features
+        out_features = out_features or in_features
+        self.fc1 = nn.Linear(in_features, hidden_features)
+        self.act = act_layer()
+        self.drop1 = nn.Dropout(drop)
+        self.fc2 = nn.Linear(hidden_features, out_features)
+        self.drop2 = nn.Dropout(drop)
+
+    def forward(self, x):
+        x = self.fc1(x)
+        x = self.act(x)
+        x = self.drop1(x)
+        x = self.fc2(x)
+        x = self.drop2(x)
+        return x
+
+
 class Attention(nn.Module):
     def __init__(
         self,
