@@ -9,11 +9,12 @@ This repository is intentionally narrower than the private research repository. 
 Currently migrated:
 
 - `examples/gene_block_construction`
+- `examples/conditional_distribution_evaluation`
+- `examples/conditional_generation`
 
 Planned next:
 
 - `examples/scib_evaluation`
-- `examples/conditional_distribution_evaluation`
 
 Modules that still depend on private research code or unpublished internals will be migrated later after dependency cleanup.
 
