@@ -266,3 +266,7 @@ year={2026},
 url={https://openreview.net/forum?id=l7QEoK4uDP}
 }
 ```
+
+## License
+
+Released under the [MIT License](LICENSE).
