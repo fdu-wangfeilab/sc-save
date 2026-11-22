@@ -34,6 +34,7 @@
       </a>
       <nav class="site-nav" aria-label="Page sections">
         <a href="#overview">Overview</a>
+        <a href="#gene-blocks">LLM vs. ViT</a>
         <a href="#results">Results</a>
         <a href="#interpretability">Interpretability</a>
         <a href="#reproduce">Reproduce</a>
@@ -82,24 +83,24 @@
 
       <div class="metrics-strip">
         <article class="metric-card">
-          <div class="metric-value">191×</div>
-          <div class="metric-label">Training Speedup</div>
-          <p class="metric-sub">12.5 min vs. 2,391.2 min on a single RTX 3090 (24 GB)</p>
+          <div class="metric-value">LLM Prior</div>
+          <div class="metric-label">Semantic Gene Embeddings</div>
+          <p class="metric-sub">1,536-dim NCBI Gene summaries (GenePT) → OT soft-patched blocks</p>
         </article>
         <article class="metric-card">
-          <div class="metric-value">1–5 Covariates</div>
-          <div class="metric-label">Unseen Extrapolation</div>
-          <p class="metric-sub">AdaLN + masked condition modeling (p = 0.6) &amp; multi-condition CFG</p>
+          <div class="metric-value">Latent FM</div>
+          <div class="metric-label">Gene-Block VAE + DiT OT-FM</div>
+          <p class="metric-sub"><code>AdaLN</code> + condition masking (<em>p</em> = 0.6) &amp; multi-condition CFG across 1–5 covariates</p>
         </article>
         <article class="metric-card">
-          <div class="metric-value">8 Benchmarks</div>
-          <div class="metric-label">Unified Configuration</div>
-          <p class="metric-sub">Generation, zero-shot batch integration &amp; perturbation prediction</p>
+          <div class="metric-value">191× Faster</div>
+          <div class="metric-label">Training &amp; Sampling Efficiency</div>
+          <p class="metric-sub">12.5 min vs. 2,391.2 min on RTX 3090 (~7 min on Colab G4, 20-step ODE)</p>
         </article>
         <article class="metric-card">
           <div class="metric-value">Tables 1–5</div>
-          <div class="metric-label">Colab G4 Verified</div>
-          <p class="metric-sub">11 datasets reproduced end-to-end in our public Colab notebook</p>
+          <div class="metric-label">8 Benchmarks · Colab Verified</div>
+          <p class="metric-sub">Unified config across generation, BEC &amp; perturbation (11 datasets reproduced)</p>
         </article>
       </div>
     </section>
@@ -107,8 +108,8 @@
     <section id="overview" class="section-block site-width" aria-labelledby="overview-title">
       <div class="section-header">
         <p class="eyebrow"><span class="accent-line" aria-hidden="true"></span> 01 / Overview &amp; Architecture</p>
-        <h2 id="overview-title">Semantic gene blocks meet masked Optimal-Transport Flow Matching.</h2>
-        <p class="section-lead"><strong>SAVE</strong> is a unified conditional generative framework for multi-condition single-cell RNA-seq modeling. Instead of attending over ~20,000 flat gene tokens, SAVE groups semantically related genes into balanced <strong>Gene Blocks</strong> and pairs a latent Variational Autoencoder with masked <strong>Optimal-Transport Flow Matching</strong> to model complex biological and technical covariates inside a single architecture.</p>
+        <h2 id="overview-title">LLM biological knowledge meets Latent Flow Matching at 191× efficiency.</h2>
+        <p class="section-lead"><strong>SAVE</strong> brings three core advantages to multi-condition single-cell RNA-seq modeling: <strong>LLM biological knowledge</strong> (NCBI Gene summaries clustered via Optimal Transport into pathway-coherent Gene Blocks), a <strong>Latent Flow Matching tech stack</strong> (Gene-Block Attention VAE + DiT Optimal-Transport Flow Matching with masked conditioning and CFG), and <strong>191× training speedup</strong> over flat gene-level Transformers.</p>
       </div>
 
       <div class="pillars-grid">
