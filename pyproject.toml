@@ -7,34 +7,56 @@ name = "sc-save-public"
 version = "0.1.0"
 description = "Public examples and utilities for gradually open-sourcing SAVE workflows."
 readme = "README.md"
-requires-python = ">=3.10,<3.11"
+requires-python = ">=3.10"
 license = { text = "MIT" }
 authors = [
   { name = "Lijiahao" },
 ]
 dependencies = [
-  "anndata==0.11.3",
-  "matplotlib==3.10.1",
-  "numpy==1.26.4",
-  "pandas==2.2.3",
-  "POT==0.9.5",
-  "pyparsing==3.2.1",
-  "scanpy==1.11.0",
-  "scikit-learn==1.5.2",
-  "scipy==1.15.2",
-  "torch==2.5.1",
-  "tqdm==4.67.1",
+  "anndata>=0.10.9",
+  "matplotlib>=3.8.0",
+  "numpy>=1.26.4",
+  "pandas>=2.2.0,<3.0",
+  "POT>=0.9.5",
+  "pyparsing>=3.1.0",
+  "scanpy>=1.10.0",
+  "scikit-learn>=1.5.0",
+  "scipy>=1.13.0",
+  "torch>=2.2.0",
+  "tqdm>=4.66.0",
 ]
 
 [project.optional-dependencies]
 generation = [
-  "einops==0.8.0",
-  "flow-matching==1.0.10",
+  "einops>=0.8.0",
+  "flow-matching>=1.0.10",
+]
+bec = [
+  "igraph>=0.10.0",
+  "leidenalg>=0.10.0",
+  "pandas>=2.2.0,<3.0",
+  "scib>=1.1.4",
+]
+datasets = [
+  "gdown>=5.0.0",
+  "pyyaml>=6.0",
+  "requests>=2.31.0",
+]
+all = [
+  "einops>=0.8.0",
+  "flow-matching>=1.0.10",
+  "gdown>=5.0.0",
+  "igraph>=0.10.0",
+  "leidenalg>=0.10.0",
+  "pandas>=2.2.0,<3.0",
+  "pyyaml>=6.0",
+  "requests>=2.31.0",
+  "scib>=1.1.4",
 ]
 
 [dependency-groups]
 dev = [
-  "pytest>=8,<9",
+  "pytest>=8",
 ]
 
 [tool.setuptools]

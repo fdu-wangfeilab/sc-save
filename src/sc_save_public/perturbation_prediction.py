@@ -4,7 +4,7 @@ Implements a leave-one-out perturbation prediction workflow:
 1. Hold out one target cell type from the dataset.
 2. Train (or load) a SAVE model on the remaining cells.
 3. Predict the stimulated expression of the held-out cell type from its control cells.
-4. Evaluate predictions against ground truth using R2, MSE, and PCC.
+4. Evaluate predictions against ground truth using R2, MSE, PCC, 2-Wasserstein (PCA-30), and RBF-MMD (PCA-30).
 """
 
 from __future__ import annotations
@@ -19,9 +19,11 @@ import scanpy as sc
 import scipy.sparse
 import torch
 from scipy.stats import pearsonr
+from sklearn.decomposition import PCA
 from sklearn.metrics import mean_squared_error, r2_score
 from sklearn.preprocessing import MaxAbsScaler
 
+from sc_save_public.distribution_metrics import compute_evaluation_metrics_fast
 from sc_save_public.models.save_model import SAVE
 
 # ---------------------------------------------------------------------------
@@ -42,6 +44,8 @@ PERTURB_TRAIN_CONFIG = {
     "iter": 3200,
     "epoch": 200,
     "is_lr_scheduler": True,
+    "sample_mask_prob": 0.0,
+    "col_msk_threshold": 0.6,
 }
 
 PERTURB_MODEL_CONFIG = {
@@ -75,7 +79,9 @@ def set_seed(seed: int):
 
 
 def get_device(device_id: int) -> torch.device:
-    return torch.device(f"cuda:{device_id}" if torch.cuda.is_available() else "cpu")
+    if device_id < 0 or not torch.cuda.is_available():
+        return torch.device("cpu")
+    return torch.device(f"cuda:{device_id}")
 
 
 # ---------------------------------------------------------------------------
@@ -157,10 +163,21 @@ def create_or_load_model(
     condition_key: str,
     train_config: dict | None = None,
     model_config: dict | None = None,
+    sample_mask_prob: float = 0.0,
+    col_msk_threshold: float = 0.6,
 ):
     """Build a SAVE model, load checkpoint if available, otherwise train."""
-    t_cfg = dict(train_config or PERTURB_TRAIN_CONFIG)
-    m_cfg = dict(model_config or PERTURB_MODEL_CONFIG)
+    t_cfg = dict(PERTURB_TRAIN_CONFIG)
+    if train_config:
+        t_cfg.update(train_config)
+    m_cfg = dict(PERTURB_MODEL_CONFIG)
+    if model_config:
+        m_cfg.update(model_config)
+
+    effective_sample_mask_prob = float(t_cfg.get("sample_mask_prob", sample_mask_prob))
+    effective_col_msk_threshold = float(t_cfg.get("col_msk_threshold", col_msk_threshold))
+    t_cfg["sample_mask_prob"] = effective_sample_mask_prob
+    t_cfg["col_msk_threshold"] = effective_col_msk_threshold
 
     save_model = SAVE(
         adata=train_adata,
@@ -184,7 +201,7 @@ def create_or_load_model(
     else:
         print("[pipeline] training SAVE model ...")
         save_model.train(
-            batch_size=t_cfg["batch_size"],
+            batch_size=min(int(t_cfg["batch_size"]), max(1, train_adata.n_obs)),
             is_grad_clip=True,
             lr=t_cfg["lr"],
             epoch=t_cfg["epoch"],
@@ -192,8 +209,8 @@ def create_or_load_model(
             iter=t_cfg["iter"],
             weight_decay=t_cfg["weight_decay"],
             is_lr_scheduler=t_cfg["is_lr_scheduler"],
-            col_msk_threshold=0.6,
-            max_sample_mask_prob=None,
+            col_msk_threshold=effective_col_msk_threshold,
+            max_sample_mask_prob=effective_sample_mask_prob,
             is_col_wise_mask=False,
             loss_monitor=None,
         )
@@ -222,7 +239,7 @@ def run_transfer(
         input_adata=input_adata,
         input_cond={condition_key: control_condition, label_key: "<mask>"},
         target_cond={condition_key: target_condition, label_key: "<mask>"},
-        batch_size=transfer_batch_size,
+        batch_size=min(transfer_batch_size, max(1, input_adata.n_obs)),
         is_output_attn_weights=True,
         verbose=False,
     )
@@ -257,12 +274,12 @@ def evaluate_perturbation(
     condition_key: str,
     target_condition: str,
     data_scale: bool,
+    device: torch.device = torch.device("cpu"),
+    n_pca_components: int = 30,
+    n_wd_mmd_repeats: int = 10,
+    seed: int = 1202,
 ) -> dict:
-    """Compute R2, MSE, and PCC between predicted and ground truth stimulated means.
-
-    Predictions are inverse-transformed from scaled space to original expression
-    values.  Ground truth is the raw (unscaled) stimulated cells.
-    """
+    """Compute R2, MSE, PCC, PCA-30 2-Wasserstein, and RBF-MMD vs ground-truth stimulated cells."""
     # Inverse-transform predictions
     pred_X = pred_data.X
     if scipy.sparse.issparse(pred_X):
@@ -280,13 +297,50 @@ def evaluate_perturbation(
     if scipy.sparse.issparse(stim_X):
         stim_X = stim_X.toarray()
 
-    pred_mean = np.asarray(pred_inverse.mean(axis=0)).flatten()
-    stim_mean = np.asarray(np.array(stim_X).mean(axis=0)).flatten()
+    pred_arr = np.asarray(pred_inverse, dtype=np.float32)
+    stim_arr = np.asarray(stim_X, dtype=np.float32)
+    pred_mean = pred_arr.mean(axis=0).flatten()
+    stim_mean = stim_arr.mean(axis=0).flatten()
+
+    if pred_mean.size < 2 or np.std(pred_mean) == 0 or np.std(stim_mean) == 0:
+        pcc_val = float("nan")
+    else:
+        pcc_val = float(pearsonr(pred_mean, stim_mean)[0])
+
+    wd_val = float("nan")
+    mmd_val = float("nan")
+    combined = np.concatenate([pred_arr, stim_arr], axis=0)
+    n_pcs = min(n_pca_components, combined.shape[0], combined.shape[1])
+    if n_pcs >= 1 and pred_arr.shape[0] >= 1 and stim_arr.shape[0] >= 1:
+        pc_func = PCA(n_components=n_pcs)
+        pc_func.fit(combined)
+        pred_pca = pc_func.transform(pred_arr)
+        stim_pca = pc_func.transform(stim_arr)
+        eval_num = min(pred_pca.shape[0], stim_pca.shape[0])
+        rng = np.random.default_rng(seed)
+        wd_vals: list[float] = []
+        mmd_vals: list[float] = []
+        for _ in range(max(1, n_wd_mmd_repeats)):
+            pred_idx = rng.choice(pred_pca.shape[0], eval_num, replace=False)
+            gt_idx = rng.choice(stim_pca.shape[0], eval_num, replace=False)
+            dist_metric = compute_evaluation_metrics_fast(
+                adata_real_pca_ary=stim_pca[gt_idx],
+                adata_generated_pca_ary=pred_pca[pred_idx],
+                model_name="SAVE",
+                device=device,
+                batch_size=eval_num,
+            )
+            wd_vals.append(float(dist_metric["2-Wasserstein_PCA"]))
+            mmd_vals.append(float(dist_metric["RBF_MMD_PCA"]))
+        wd_val = float(np.mean(wd_vals))
+        mmd_val = float(np.mean(mmd_vals))
 
     return {
         "r2": float(r2_score(pred_mean, stim_mean)),
         "mse": float(mean_squared_error(pred_mean, stim_mean)),
-        "pcc": float(pearsonr(pred_mean, stim_mean)[0]),
+        "pcc": pcc_val,
+        "wd": wd_val,
+        "mmd": mmd_val,
     }
 
 
@@ -312,6 +366,10 @@ def run_perturbation(
     max_input_cells: int = 0,
     train_config: dict | None = None,
     model_config: dict | None = None,
+    sample_mask_prob: float = 0.0,
+    col_msk_threshold: float = 0.6,
+    n_pca_components: int = 30,
+    n_wd_mmd_repeats: int = 10,
 ) -> dict:
     """End-to-end perturbation prediction for one held-out cell type.
 
@@ -362,6 +420,8 @@ def run_perturbation(
         condition_key=condition_key,
         train_config=train_config,
         model_config=model_config,
+        sample_mask_prob=sample_mask_prob,
+        col_msk_threshold=col_msk_threshold,
     )
 
     # --- predict ---
@@ -374,12 +434,20 @@ def run_perturbation(
 
     # --- evaluate ---
     metrics = evaluate_perturbation(
-        pred_data, test_raw, train_scaler,
-        condition_key, target_condition, data_scale,
+        pred_data,
+        test_raw,
+        train_scaler,
+        condition_key,
+        target_condition,
+        data_scale,
+        device=device,
+        n_pca_components=n_pca_components,
+        n_wd_mmd_repeats=n_wd_mmd_repeats,
+        seed=seed,
     )
     print(
-        f"[pipeline] metrics: R2={metrics['r2']:.4f}  "
-        f"MSE={metrics['mse']:.6f}  PCC={metrics['pcc']:.4f}"
+        f"[pipeline] metrics: R2={metrics['r2']:.4f}  MSE={metrics['mse']:.6f}  "
+        f"PCC={metrics['pcc']:.4f}  WD={metrics['wd']:.4f}  MMD={metrics['mmd']:.4f}"
     )
 
     # --- save artifacts ---
@@ -453,6 +521,10 @@ def run_leave_one_out(
     cell_types: list[str] | None = None,
     train_config: dict | None = None,
     model_config: dict | None = None,
+    sample_mask_prob: float = 0.0,
+    col_msk_threshold: float = 0.6,
+    n_pca_components: int = 30,
+    n_wd_mmd_repeats: int = 10,
 ) -> dict:
     """Run perturbation prediction for every cell type and aggregate metrics.
 
@@ -492,26 +564,36 @@ def run_leave_one_out(
             max_input_cells=max_input_cells,
             train_config=train_config,
             model_config=model_config,
+            sample_mask_prob=sample_mask_prob,
+            col_msk_threshold=col_msk_threshold,
+            n_pca_components=n_pca_components,
+            n_wd_mmd_repeats=n_wd_mmd_repeats,
         )
         all_metrics[ct] = report["metrics"]
 
     # Summary table
-    print(f"\n{'=' * 60}")
+    print(f"\n{'=' * 78}")
     print("[leave-one-out] Summary")
-    print(f"{'=' * 60}")
-    print(f"{'Cell Type':<20} {'R2':>10} {'MSE':>12} {'PCC':>10}")
-    print("-" * 56)
+    print(f"{'=' * 78}")
+    print(f"{'Cell Type':<20} {'R2':>10} {'MSE':>12} {'PCC':>10} {'WD':>10} {'MMD':>10}")
+    print("-" * 78)
     for ct in cell_types:
         m = all_metrics[ct]
-        print(f"{ct:<20} {m['r2']:>10.4f} {m['mse']:>12.6f} {m['pcc']:>10.4f}")
+        print(
+            f"{ct:<20} {m['r2']:>10.4f} {m['mse']:>12.6f} "
+            f"{m['pcc']:>10.4f} {m['wd']:>10.4f} {m['mmd']:>10.4f}"
+        )
 
-    n = len(all_metrics)
-    avg = {
-        k: sum(m[k] for m in all_metrics.values()) / n
-        for k in ("r2", "mse", "pcc")
-    }
-    print("-" * 56)
-    print(f"{'Average':<20} {avg['r2']:>10.4f} {avg['mse']:>12.6f} {avg['pcc']:>10.4f}")
+    metric_keys = ("r2", "mse", "pcc", "wd", "mmd")
+    avg = {}
+    for k in metric_keys:
+        vals = [m[k] for m in all_metrics.values() if k in m and not np.isnan(m[k])]
+        avg[k] = float(np.mean(vals)) if vals else float("nan")
+    print("-" * 78)
+    print(
+        f"{'Average':<20} {avg['r2']:>10.4f} {avg['mse']:>12.6f} "
+        f"{avg['pcc']:>10.4f} {avg['wd']:>10.4f} {avg['mmd']:>10.4f}"
+    )
 
     summary = {
         "cell_types": cell_types,

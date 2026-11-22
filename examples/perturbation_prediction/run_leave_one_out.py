@@ -34,11 +34,22 @@ def parse_args():
         "--cell-types", type=str, nargs="*", default=None,
         help="Specific cell types to evaluate; omit to run all.",
     )
+    parser.add_argument("--epoch", type=int, default=None, help="Override training epochs (default 200).")
+    parser.add_argument("--sample-mask-prob", type=float, default=0.0)
+    parser.add_argument("--col-msk-threshold", type=float, default=0.6)
+    parser.add_argument("--n-pca-components", type=int, default=30)
+    parser.add_argument("--n-wd-mmd-repeats", type=int, default=10)
     return parser.parse_args()
 
 
 def main():
     args = parse_args()
+    train_config = None
+    if args.epoch is not None:
+        from sc_save_public.perturbation_prediction import PERTURB_TRAIN_CONFIG
+
+        train_config = dict(PERTURB_TRAIN_CONFIG)
+        train_config["epoch"] = args.epoch
     run_leave_one_out(
         data_path=args.data_path,
         output_dir=args.output_dir,
@@ -54,6 +65,11 @@ def main():
         transfer_batch_size=args.transfer_batch_size,
         max_input_cells=args.max_input_cells,
         cell_types=args.cell_types,
+        train_config=train_config,
+        sample_mask_prob=args.sample_mask_prob,
+        col_msk_threshold=args.col_msk_threshold,
+        n_pca_components=args.n_pca_components,
+        n_wd_mmd_repeats=args.n_wd_mmd_repeats,
     )
 
 

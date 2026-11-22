@@ -43,25 +43,49 @@ def _mix_rbf_kernel(X: torch.Tensor, Y: torch.Tensor, sigma_list: list[float]):
     return kernel[:m, :m], kernel[:m, m:], kernel[m:, m:]
 
 
-def _mmd2(K_XX: torch.Tensor, K_XY: torch.Tensor, K_YY: torch.Tensor) -> torch.Tensor:
+def _mmd2(
+    K_XX: torch.Tensor,
+    K_XY: torch.Tensor,
+    K_YY: torch.Tensor,
+    const_diagonal: float | bool = False,
+    biased: bool = True,
+) -> torch.Tensor:
     m = K_XX.size(0)
-    if m <= 1:
-        return torch.tensor(0.0, device=K_XX.device)
+    if m == 0 or (not biased and m <= 1):
+        return torch.tensor(0.0, device=K_XX.device, dtype=K_XX.dtype)
 
-    diag_X = torch.diag(K_XX)
-    diag_Y = torch.diag(K_YY)
+    if const_diagonal is not False:
+        diag_X = diag_Y = const_diagonal
+        sum_diag_X = sum_diag_Y = m * const_diagonal
+    else:
+        diag_X = torch.diag(K_XX)
+        diag_Y = torch.diag(K_YY)
+        sum_diag_X = torch.sum(diag_X)
+        sum_diag_Y = torch.sum(diag_Y)
+
     Kt_XX_sums = K_XX.sum(dim=1) - diag_X
     Kt_YY_sums = K_YY.sum(dim=1) - diag_Y
     K_XY_sum = K_XY.sum()
 
     Kt_XX_sum = Kt_XX_sums.sum()
     Kt_YY_sum = Kt_YY_sums.sum()
+    if biased:
+        return (
+            (Kt_XX_sum + sum_diag_X) / (m * m)
+            + (Kt_YY_sum + sum_diag_Y) / (m * m)
+            - 2.0 * K_XY_sum / (m * m)
+        )
     return Kt_XX_sum / (m * (m - 1)) + Kt_YY_sum / (m * (m - 1)) - 2.0 * K_XY_sum / (m * m)
 
 
-def mix_rbf_mmd2(X: torch.Tensor, Y: torch.Tensor, sigma_list: list[float]) -> torch.Tensor:
+def mix_rbf_mmd2(
+    X: torch.Tensor,
+    Y: torch.Tensor,
+    sigma_list: list[float],
+    biased: bool = True,
+) -> torch.Tensor:
     K_XX, K_XY, K_YY = _mix_rbf_kernel(X, Y, sigma_list)
-    return _mmd2(K_XX, K_XY, K_YY)
+    return _mmd2(K_XX, K_XY, K_YY, const_diagonal=False, biased=biased)
 
 
 def wasserstein(
@@ -81,9 +105,9 @@ def wasserstein(
     cost = torch.cdist(x0, x1)
     if power == 2:
         cost = cost**2
-    result = ot.emd2(a, b, cost.detach().cpu().numpy(), numItermax=1e7)
+    result = ot.emd2(a, b, cost.detach().cpu().numpy(), numItermax=int(1e7))
     if power == 2:
-        result = math.sqrt(result)
+        result = math.sqrt(max(0.0, float(result)))
     return float(result)
 
 

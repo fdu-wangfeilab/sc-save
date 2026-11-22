@@ -24,6 +24,22 @@ PRIMARY_SUMMARY_COLS = ["2-Wasserstein_PCA", "RBF_MMD_PCA"]
 EXTRA_DISTRIBUTION_COLS = ["1-Wasserstein_PCA", "Linear_MMD_unbiased_PCA"]
 EXPRESSION_SUMMARY_COLS = ["pcc", "mse", "r2", "top_gene_overlap"]
 
+CANCER_LUNG_MACRO_COND_COLS = ["assay", "development_stage", "disease", "uicc_stage"]
+CANCER_LUNG_UNSEEN_CONDITIONS = [
+    {
+        "assay": "10x 3' v2",
+        "development_stage": "65-year-old human stage",
+        "disease": "chronic obstructive pulmonary disease",
+        "uicc_stage": "non-cancer",
+    },
+    {
+        "assay": "Smart-seq2",
+        "development_stage": "70-year-old human stage",
+        "disease": "squamous cell lung carcinoma",
+        "uicc_stage": "I",
+    },
+]
+
 
 def get_device(device_id: int) -> torch.device:
     return torch.device(f"cuda:{device_id}" if torch.cuda.is_available() else "cpu")
@@ -256,6 +272,21 @@ def to_jsonable(value):
     return value
 
 
+def _build_unseen_mask(metrics_df: pd.DataFrame, unseen_conditions) -> pd.Series:
+    if metrics_df.empty or not unseen_conditions:
+        return pd.Series(False, index=metrics_df.index, dtype=bool)
+    combined_mask = pd.Series(False, index=metrics_df.index, dtype=bool)
+    for cond_dict in unseen_conditions:
+        present_keys = [k for k in cond_dict if k in metrics_df.columns]
+        if not present_keys or len(present_keys) != len(cond_dict):
+            continue
+        cond_mask = pd.Series(True, index=metrics_df.index, dtype=bool)
+        for key, value in cond_dict.items():
+            cond_mask &= metrics_df[key].astype(str) == str(value)
+        combined_mask |= cond_mask
+    return combined_mask
+
+
 def run_conditional_distribution_evaluation(
     gt_path: str,
     gen_path: str,
@@ -269,6 +300,9 @@ def run_conditional_distribution_evaluation(
     top_gene_count: int = 100,
     model_name: str = "generated",
     include_expression_metrics: bool = True,
+    unseen_conditions=None,
+    macro_cond_cols=None,
+    task_name: str | None = None,
 ):
     if cond_cols is None:
         cond_cols = DEFAULT_COND_COLS
@@ -334,11 +368,66 @@ def run_conditional_distribution_evaluation(
         )
         expression_summary = summarize_metrics(metrics_df, EXPRESSION_SUMMARY_COLS)
 
+    is_cancer_task = task_name in {"cancer_lung", "lung_cancer"}
+    has_cancer_cols = set(CANCER_LUNG_MACRO_COND_COLS).issubset(set(cond_cols))
+    effective_unseen = unseen_conditions
+    if effective_unseen is None and (is_cancer_task or has_cancer_cols):
+        candidate_mask = _build_unseen_mask(metrics_df, CANCER_LUNG_UNSEEN_CONDITIONS)
+        if is_cancer_task or bool(candidate_mask.any()):
+            effective_unseen = CANCER_LUNG_UNSEEN_CONDITIONS
+
+    effective_macro_cols = macro_cond_cols
+    if effective_macro_cols is None and effective_unseen is not None and has_cancer_cols:
+        effective_macro_cols = list(CANCER_LUNG_MACRO_COND_COLS)
+
+    all_summary_cols = (
+        PRIMARY_SUMMARY_COLS + EXTRA_DISTRIBUTION_COLS + EXPRESSION_SUMMARY_COLS
+    )
+    seen_unseen_summary = {}
+    if effective_unseen is not None and not metrics_df.empty:
+        unseen_mask = _build_unseen_mask(metrics_df, effective_unseen)
+        metrics_df["split"] = np.where(unseen_mask, "unseen", "seen")
+        seen_df = metrics_df[~unseen_mask]
+        unseen_df = metrics_df[unseen_mask]
+        seen_unseen_summary = {
+            "n_seen_conditions": int((~unseen_mask).sum()),
+            "n_unseen_conditions": int(unseen_mask.sum()),
+            "seen": summarize_metrics(seen_df, all_summary_cols),
+            "unseen": summarize_metrics(unseen_df, all_summary_cols),
+        }
+
+    macro_summary = {}
+    macro_metrics_path = None
+    if effective_macro_cols and not metrics_df.empty and set(effective_macro_cols).issubset(set(metrics_df.columns)):
+        macro_df = (
+            metrics_df.groupby(list(effective_macro_cols), observed=False)
+            .mean(numeric_only=True)
+            .reset_index()
+        )
+        macro_file = out_dir / "macro_condition_metrics.csv"
+        macro_df.to_csv(macro_file, index=False)
+        macro_metrics_path = str(macro_file)
+        macro_summary = {
+            "macro_cond_cols": list(effective_macro_cols),
+            "n_macro_conditions": int(len(macro_df)),
+            "metrics": summarize_metrics(macro_df, all_summary_cols),
+        }
+
     merged_distro.to_csv(out_dir / "distribution_alignment.csv", index=False)
     metrics_df.to_csv(out_dir / "per_condition_metrics.csv", index=False)
 
     primary_summary = summarize_metrics(metrics_df, PRIMARY_SUMMARY_COLS)
     extra_distribution_summary = summarize_metrics(metrics_df, EXTRA_DISTRIBUTION_COLS)
+    summary_payload = {
+        "primary_metrics": primary_summary,
+        "extra_distribution_metrics": extra_distribution_summary,
+        "expression_metrics": expression_summary,
+    }
+    if seen_unseen_summary:
+        summary_payload.update(seen_unseen_summary)
+    if macro_summary:
+        summary_payload["macro"] = macro_summary
+
     report = {
         "gt_path": gt_path,
         "gen_path": gen_path,
@@ -356,11 +445,7 @@ def run_conditional_distribution_evaluation(
             "mismatched_conditions": int((~merged_distro["is_equal"]).sum()),
             "all_conditions_match": bool(merged_distro["is_equal"].all()),
         },
-        "summary": {
-            "primary_metrics": primary_summary,
-            "extra_distribution_metrics": extra_distribution_summary,
-            "expression_metrics": expression_summary,
-        },
+        "summary": summary_payload,
     }
 
     with open(out_dir / "report.json", "w") as handle:
@@ -370,15 +455,20 @@ def run_conditional_distribution_evaluation(
     for metric_name, stats in primary_summary.items():
         print(f"  - {metric_name}: mean={stats['mean']:.6f}, std={stats['std']:.6f}")
 
-    return {
+    result_payload = {
         "distribution_alignment_path": str(out_dir / "distribution_alignment.csv"),
         "per_condition_metrics_path": str(out_dir / "per_condition_metrics.csv"),
         "report_path": str(out_dir / "report.json"),
         "report": report,
     }
+    if macro_metrics_path is not None:
+        result_payload["macro_condition_metrics_path"] = macro_metrics_path
+    return result_payload
 
 
 __all__ = [
+    "CANCER_LUNG_MACRO_COND_COLS",
+    "CANCER_LUNG_UNSEEN_CONDITIONS",
     "DEFAULT_COND_COLS",
     "DEFAULT_OUTPUT_DIR",
     "run_conditional_distribution_evaluation",

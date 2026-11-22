@@ -535,7 +535,11 @@ class SAVE:
         print(f"save ckpt to {ckpt_path}!")
 
     def load_ckpt(self, ckpt_path: str):
-        self.model.load_state_dict(torch.load(ckpt_path, map_location=self.device))
+        try:
+            state_dict = torch.load(ckpt_path, map_location=self.device, weights_only=False)
+        except TypeError:
+            state_dict = torch.load(ckpt_path, map_location=self.device)
+        self.model.load_state_dict(state_dict)
         self.is_trained = True
         print(f"successfully load {ckpt_path}!")
 
