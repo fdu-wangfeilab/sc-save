@@ -10,8 +10,11 @@ Implements a leave-one-out perturbation prediction workflow:
 from __future__ import annotations
 
 import json
+import multiprocessing
+import os
 import pickle
 import time
+from concurrent.futures import ProcessPoolExecutor
 from pathlib import Path
 
 import numpy as np
@@ -504,6 +507,47 @@ def run_perturbation(
 # ---------------------------------------------------------------------------
 
 
+def resolve_perturbation_workers(
+    workers: int | str,
+    device: torch.device,
+    num_tasks: int,
+) -> int:
+    """Resolve LOO worker count ('auto' scales up to 7 on >=75 GB VRAM, 4 on >=40 GB)."""
+    if isinstance(workers, str) and workers.strip().lower() == "auto":
+        if device.type != "cuda" or not torch.cuda.is_available():
+            return 1
+        try:
+            total_gb = torch.cuda.get_device_properties(device).total_memory / (1024**3)
+        except RuntimeError:
+            return 1
+        if total_gb >= 75.0:
+            return min(7, max(1, num_tasks))
+        if total_gb >= 40.0:
+            return min(4, max(1, num_tasks))
+        return 1
+    return max(1, min(int(workers), max(1, num_tasks)))
+
+
+def _is_cuda_oom_exception(exc: BaseException) -> bool:
+    if isinstance(exc, torch.cuda.OutOfMemoryError):
+        return True
+    msg = str(exc).lower()
+    return any(
+        token in msg
+        for token in (
+            "out of memory",
+            "cublas_status_alloc_failed",
+            "cuda error",
+            "process pool was terminated abruptly",
+        )
+    )
+
+
+def _run_perturbation_worker(kwargs: dict) -> tuple[str, dict]:
+    report = run_perturbation(**kwargs)
+    return kwargs["cell_type"], report["metrics"]
+
+
 def run_leave_one_out(
     data_path: str,
     output_dir: str = DEFAULT_OUTPUT_DIR,
@@ -525,6 +569,7 @@ def run_leave_one_out(
     col_msk_threshold: float = 0.6,
     n_pca_components: int = 30,
     n_wd_mmd_repeats: int = 10,
+    workers: int | str = 1,
 ) -> dict:
     """Run perturbation prediction for every cell type and aggregate metrics.
 
@@ -539,37 +584,73 @@ def run_leave_one_out(
         adata = load_adata(data_path, label_key, condition_key)
         cell_types = sorted(adata.obs[label_key].astype(str).unique().tolist())
 
-    print(f"[leave-one-out] cell types: {cell_types}")
-    all_metrics = {}
+    device = get_device(device_id)
+    effective_workers = resolve_perturbation_workers(workers, device, len(cell_types))
+    print(f"[leave-one-out] cell types: {cell_types} (workers={effective_workers})")
 
-    for ct in cell_types:
-        print(f"\n{'=' * 60}")
-        print(f"[leave-one-out] {ct}")
-        print(f"{'=' * 60}")
-        ct_dir = str(out_root / ct.replace("+", "_plus_"))
-        report = run_perturbation(
-            data_path=data_path,
-            cell_type=ct,
-            output_dir=ct_dir,
-            device_id=device_id,
-            seed=seed,
-            ckpt_dir=ckpt_dir,
-            label_key=label_key,
-            condition_key=condition_key,
-            control_condition=control_condition,
-            target_condition=target_condition,
-            train_with_ctrl=train_with_ctrl,
-            data_scale=data_scale,
-            transfer_batch_size=transfer_batch_size,
-            max_input_cells=max_input_cells,
-            train_config=train_config,
-            model_config=model_config,
-            sample_mask_prob=sample_mask_prob,
-            col_msk_threshold=col_msk_threshold,
-            n_pca_components=n_pca_components,
-            n_wd_mmd_repeats=n_wd_mmd_repeats,
-        )
-        all_metrics[ct] = report["metrics"]
+    job_kwargs_by_ct = {
+        ct: {
+            "data_path": data_path,
+            "cell_type": ct,
+            "output_dir": str(out_root / ct.replace("+", "_plus_")),
+            "device_id": device_id,
+            "seed": seed,
+            "ckpt_dir": ckpt_dir,
+            "label_key": label_key,
+            "condition_key": condition_key,
+            "control_condition": control_condition,
+            "target_condition": target_condition,
+            "train_with_ctrl": train_with_ctrl,
+            "data_scale": data_scale,
+            "transfer_batch_size": transfer_batch_size,
+            "max_input_cells": max_input_cells,
+            "train_config": train_config,
+            "model_config": model_config,
+            "sample_mask_prob": sample_mask_prob,
+            "col_msk_threshold": col_msk_threshold,
+            "n_pca_components": n_pca_components,
+            "n_wd_mmd_repeats": n_wd_mmd_repeats,
+        }
+        for ct in cell_types
+    }
+
+    raw_metrics: dict[str, dict] = {}
+    serial_retry_cts: list[str] = []
+
+    if effective_workers <= 1 or len(cell_types) <= 1:
+        serial_retry_cts = list(cell_types)
+    else:
+        mp_ctx = multiprocessing.get_context("spawn")
+        with ProcessPoolExecutor(
+            max_workers=effective_workers,
+            mp_context=mp_ctx,
+        ) as executor:
+            futures = {
+                ct: executor.submit(_run_perturbation_worker, job_kwargs_by_ct[ct])
+                for ct in cell_types
+            }
+            for ct, fut in futures.items():
+                try:
+                    _, ct_metrics = fut.result()
+                    raw_metrics[ct] = ct_metrics
+                except Exception as exc:
+                    if _is_cuda_oom_exception(exc):
+                        print(f"[leave-one-out] worker OOM/crash on {ct}; queuing serial retry: {exc}")
+                        serial_retry_cts.append(ct)
+                    else:
+                        raise
+
+    if serial_retry_cts:
+        if device.type == "cuda" and torch.cuda.is_available():
+            torch.cuda.empty_cache()
+        for ct in serial_retry_cts:
+            print(f"\n{'=' * 60}")
+            print(f"[leave-one-out] {ct}")
+            print(f"{'=' * 60}")
+            report = run_perturbation(**job_kwargs_by_ct[ct])
+            raw_metrics[ct] = report["metrics"]
+
+    all_metrics = {ct: raw_metrics[ct] for ct in cell_types}
 
     # Summary table
     print(f"\n{'=' * 78}")

@@ -6,8 +6,10 @@ from functools import partial
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 import importlib.util
 import json
+import os
 from pathlib import Path
 import pickle
+import shutil
 import struct
 import sys
 import threading
@@ -701,4 +703,116 @@ def test_table2_heart_log1p_only_without_normalize_total(tmp_path: Path) -> None
         np.log1p(heart.layers["counts"][:, real_mask].toarray()),
         rtol=1e-5,
         atol=1e-5,
+    )
+
+
+def test_parallel_prepare_datasets_deduplicates_downloads_and_matches_serial(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    assert ds.resolve_workers("auto") == max(1, min(8, os.cpu_count() or 1))
+    assert ds.resolve_workers("3") == 3
+    assert ds.resolve_workers(2) == 2
+    with pytest.raises(ValueError):
+        ds.resolve_workers(0)
+    with pytest.raises(ValueError):
+        ds.resolve_workers("not-an-int")
+
+    genept_genes = [f"PAR_G_{i}" for i in range(3260)]
+    extra_genes = [f"PAR_EX_{i}" for i in range(40)]
+    all_genes = genept_genes + extra_genes
+
+    emb_path = _write_fake_genept_pickle(
+        tmp_path / "shared_genept" / ds.GENEPT_PICKLE_NAME, genept_genes
+    )
+    src_raw = tmp_path / "source_heart.h5ad"
+    heart_obs = pd.DataFrame(
+        {"donor": ["D1", "D2"] * 10, "cell_type": ["CM", "FB"] * 10}
+    )
+    raw_adata = _make_synthetic_adata(
+        20, all_genes, heart_obs, raw_counts=True, sparse_x=False, seed=19
+    )
+    raw_adata.X[0, 0] = 7578.0
+    raw_adata.X = sparse.csr_matrix(raw_adata.X)
+    raw_adata.write_h5ad(src_raw)
+
+    download_lock = threading.Lock()
+    download_calls: list[Path] = []
+
+    def fake_download(url: str, dest: Path, **kwargs: object) -> Path:
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copyfile(src_raw, dest)
+        with download_lock:
+            download_calls.append(dest)
+        return dest
+
+    monkeypatch.setattr(ds, "_download_file", fake_download)
+
+    serial_root = tmp_path / "serial_root"
+    parallel_root = tmp_path / "parallel_root"
+
+    serial_res = ds.prepare_datasets(
+        ["heart", "heart_bec"],
+        data_root=serial_root,
+        gene_embedding_path=emb_path,
+        min_genes=10,
+        min_cells=1,
+        workers=1,
+    )
+    assert len(download_calls) == 1
+
+    download_calls.clear()
+    parallel_res = ds.prepare_datasets(
+        ["heart", "heart_bec"],
+        data_root=parallel_root,
+        gene_embedding_path=emb_path,
+        min_genes=10,
+        min_cells=1,
+        workers=2,
+    )
+    # Shared hca_subsampled_20k.h5ad must be downloaded only once even under workers=2.
+    assert len(download_calls) == 1
+    assert list(parallel_res.keys()) == ["heart", "heart_bec"]
+
+    for key in ("heart", "heart_bec"):
+        s_ad = sc.read_h5ad(serial_res[key].primary_path)
+        p_ad = sc.read_h5ad(parallel_res[key].primary_path)
+        assert s_ad.shape == p_ad.shape
+        assert list(s_ad.var_names) == list(p_ad.var_names)
+        assert list(s_ad.obs_names) == list(p_ad.obs_names)
+        assert list(s_ad.var["gene_block_id"]) == list(p_ad.var["gene_block_id"])
+        np.testing.assert_allclose(s_ad.X.toarray(), p_ad.X.toarray(), rtol=1e-6, atol=1e-6)
+        assert "counts" in p_ad.layers
+        np.testing.assert_allclose(
+            s_ad.layers["counts"].toarray(),
+            p_ad.layers["counts"].toarray(),
+            rtol=1e-6,
+            atol=1e-6,
+        )
+
+    manifest = json.loads((parallel_root / "manifest.json").read_text())
+    assert set(manifest["datasets"].keys()) == {"heart", "heart_bec"}
+
+    # Verify CLI --workers accepts both integer strings and 'auto' on cached outputs.
+    script_path = Path(__file__).resolve().parents[1] / "examples" / "prepare_datasets.py"
+    spec = importlib.util.spec_from_file_location("prepare_datasets_par_cli", script_path)
+    assert spec is not None and spec.loader is not None
+    cli_mod = importlib.util.module_from_spec(spec)
+    sys.modules["prepare_datasets_par_cli"] = cli_mod
+    spec.loader.exec_module(cli_mod)
+    assert (
+        cli_mod.main(
+            [
+                "--datasets",
+                "heart,heart_bec",
+                "--data-root",
+                str(parallel_root),
+                "--gene-embedding-path",
+                str(emb_path),
+                "--skip-download",
+                "--workers",
+                "auto",
+            ]
+        )
+        == 0
     )

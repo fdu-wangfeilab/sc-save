@@ -4,6 +4,7 @@ utilities for reproducing Tables 1-5 of the SAVE ICLR 2026 paper.
 
 from __future__ import annotations
 
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
 from datetime import datetime, timezone
 import json
@@ -11,6 +12,7 @@ import math
 import os
 from pathlib import Path, PurePosixPath
 import struct
+import threading
 import time
 from typing import Any, Sequence
 import urllib.error
@@ -100,6 +102,7 @@ DEFAULT_HTTP_HEADERS: dict[str, str] = {
 HDF5_MAGIC = b"\x89HDF\r\n\x1a\n"
 ZIP_MAGIC = b"PK\x03\x04"
 DEFAULT_OT_NUM_ITER_MAX = 1_000_000
+_HDF5_IO_LOCK = threading.Lock()
 
 
 @dataclass(frozen=True)
@@ -447,6 +450,28 @@ for _name, _spec in DATASET_SPECS.items():
 # ---------------------------------------------------------------------------
 # Registry Helpers
 # ---------------------------------------------------------------------------
+
+
+def resolve_workers(workers: int | str = 1) -> int:
+    """Resolve worker count ('auto' -> min(8, cpu_count), or positive integer)."""
+    if isinstance(workers, str):
+        stripped = workers.strip().lower()
+        if stripped == "auto":
+            return max(1, min(8, os.cpu_count() or 1))
+        try:
+            parsed = int(stripped)
+        except ValueError as exc:
+            raise ValueError(
+                f"Invalid workers value '{workers}'. Expected 'auto' or positive integer."
+            ) from exc
+        if parsed < 1:
+            raise ValueError(f"workers must be >= 1, got {parsed}")
+        return parsed
+    if isinstance(workers, bool) or not isinstance(workers, int):
+        raise TypeError(f"workers must be int or 'auto', got {type(workers).__name__}")
+    if workers < 1:
+        raise ValueError(f"workers must be >= 1, got {workers}")
+    return workers
 
 
 def list_datasets() -> list[DatasetSpec]:
@@ -806,6 +831,7 @@ def extract_zip_entries_via_http_range(
     backup_urls: Sequence[str] = (),
     force: bool = False,
     timeout: int = 120,
+    max_workers: int = 1,
 ) -> dict[str, Path]:
     """Download only requested entries from a remote ZIP/ZIP64 archive via HTTP Range."""
     pending = {
@@ -825,10 +851,26 @@ def extract_zip_entries_via_http_range(
                 raise KeyError(
                     f"Archive entries not found in {candidate_url}: {missing}"
                 )
-            for member, dest in pending.items():
-                _stream_remote_zip_entry(
-                    candidate_url, entries[member], dest, timeout=timeout
-                )
+            n_workers = max(1, min(int(max_workers), len(pending)))
+            if n_workers == 1 or len(pending) == 1:
+                for member, dest in pending.items():
+                    _stream_remote_zip_entry(
+                        candidate_url, entries[member], dest, timeout=timeout
+                    )
+            else:
+                with ThreadPoolExecutor(max_workers=n_workers) as pool:
+                    futures = [
+                        pool.submit(
+                            _stream_remote_zip_entry,
+                            candidate_url,
+                            entries[member],
+                            dest,
+                            timeout=timeout,
+                        )
+                        for member, dest in pending.items()
+                    ]
+                    for fut in as_completed(futures):
+                        fut.result()
             return dict(member_to_dest)
         except Exception as exc:
             last_err = exc
@@ -1551,12 +1593,18 @@ def _subsample_adata(
     return adata[sorted(picked)].copy()
 
 
+def _read_h5ad_safe(path: Path) -> ad.AnnData:
+    with _HDF5_IO_LOCK:
+        return sc.read_h5ad(path)
+
+
 def _write_h5ad_atomic(adata: ad.AnnData, dest: Path) -> None:
     dest.parent.mkdir(parents=True, exist_ok=True)
     adata.var = sanitize_var_for_h5ad(adata.var)
     tmp_path = dest.with_suffix(".h5ad.part")
     try:
-        adata.write_h5ad(tmp_path)
+        with _HDF5_IO_LOCK:
+            adata.write_h5ad(tmp_path)
         os.replace(tmp_path, dest)
     except Exception:
         tmp_path.unlink(missing_ok=True)
@@ -1600,8 +1648,8 @@ def _prepare_table1_cfgen(
     ot_num_iter_max: int,
     seed: int,
 ) -> tuple[ad.AnnData, dict[str, Any]]:
-    train_raw = sc.read_h5ad(raw_paths[0])
-    test_raw = sc.read_h5ad(raw_paths[1])
+    train_raw = _read_h5ad_safe(raw_paths[0])
+    test_raw = _read_h5ad_safe(raw_paths[1])
     train_raw.var_names_make_unique()
     test_raw.var_names_make_unique()
 
@@ -1648,7 +1696,7 @@ def _prepare_table2_dual(
     ot_num_iter_max: int,
     seed: int,
 ) -> tuple[ad.AnnData, dict[str, Any]]:
-    adata = sc.read_h5ad(raw_paths[0])
+    adata = _read_h5ad_safe(raw_paths[0])
     adata.var_names_make_unique()
     _standardize_dataset_obs(spec, adata)
     adata = _subsample_adata(adata, subset_cells, stratify_cols=spec.cond_cols, seed=seed)
@@ -1686,15 +1734,16 @@ def _prepare_table3_lung_cancer(
     seed: int,
 ) -> tuple[ad.AnnData, dict[str, Any]]:
     # Open huge 17 GB CellxGene atlas backed="r" and subset ages 55/60/65/70 before .to_memory()
-    backed = ad.read_h5ad(raw_paths[0], backed="r")
-    try:
-        if "development_stage" not in backed.obs.columns:
-            raise KeyError("Expected 'development_stage' in lung_cancer obs columns.")
-        age_mask = backed.obs["development_stage"].astype(str).isin(LUNG_CANCER_AGE_STAGES)
-        adata = backed[age_mask, :].to_memory()
-    finally:
-        if getattr(backed, "file", None) is not None:
-            backed.file.close()
+    with _HDF5_IO_LOCK:
+        backed = ad.read_h5ad(raw_paths[0], backed="r")
+        try:
+            if "development_stage" not in backed.obs.columns:
+                raise KeyError("Expected 'development_stage' in lung_cancer obs columns.")
+            age_mask = backed.obs["development_stage"].astype(str).isin(LUNG_CANCER_AGE_STAGES)
+            adata = backed[age_mask, :].to_memory()
+        finally:
+            if getattr(backed, "file", None) is not None:
+                backed.file.close()
 
     _standardize_dataset_obs(spec, adata)
     adata = _subsample_adata(
@@ -1767,7 +1816,7 @@ def _prepare_table4_bec(
     min_cells: int | None,
     seed: int,
 ) -> tuple[ad.AnnData, dict[str, Any]]:
-    adata = sc.read_h5ad(raw_paths[0])
+    adata = _read_h5ad_safe(raw_paths[0])
     adata.var_names_make_unique()
     _standardize_dataset_obs(spec, adata)
     adata = _subsample_adata(adata, subset_cells, stratify_cols=spec.cond_cols, seed=seed)
@@ -1818,8 +1867,8 @@ def _prepare_table5_pbmc_ifn(
     ot_num_iter_max: int,
     seed: int,
 ) -> tuple[ad.AnnData, dict[str, Any]]:
-    train_adata = sc.read_h5ad(raw_paths[0])
-    valid_adata = sc.read_h5ad(raw_paths[1])
+    train_adata = _read_h5ad_safe(raw_paths[0])
+    valid_adata = _read_h5ad_safe(raw_paths[1])
     train_adata.var_names_make_unique()
     valid_adata.var_names_make_unique()
     if not set(train_adata.obs_names).isdisjoint(set(valid_adata.obs_names)):
@@ -1866,7 +1915,7 @@ def _inspect_existing_dataset(
     spec: DatasetSpec,
     out_paths: dict[str, Path],
 ) -> PreparedDataset:
-    primary = sc.read_h5ad(out_paths[spec.primary_key])
+    primary = _read_h5ad_safe(out_paths[spec.primary_key])
     var_df = primary.var
     n_shared = (
         int(var_df["is_genept_covered"].astype(bool).sum())
@@ -2038,6 +2087,117 @@ def _update_manifest(
     return manifest_path
 
 
+def _prepare_unique_raw_files(
+    pending_specs: Sequence[DatasetSpec],
+    data_root: Path,
+    *,
+    skip_download: bool,
+    force: bool,
+    workers: int,
+) -> None:
+    """Ensure all unique raw inputs required by pending_specs exist without duplicate downloads."""
+    if not pending_specs:
+        return
+
+    seen_dests: set[Path] = set()
+    ordered_dests: list[Path] = []
+    cfgen_groups: dict[tuple[str, tuple[str, ...]], dict[str, Path]] = {}
+    download_jobs: list[Any] = []
+
+    for spec in pending_specs:
+        raw_paths = _get_raw_paths(spec, data_root)
+        if spec.download_kind == "cfgen_zip64":
+            group_key = (spec.source_urls[0], spec.backup_urls)
+            member_map = cfgen_groups.setdefault(group_key, {})
+            for member, dest in zip(spec.archive_members, raw_paths):
+                resolved = dest.resolve()
+                if resolved not in seen_dests:
+                    seen_dests.add(resolved)
+                    ordered_dests.append(dest)
+                    member_map[member] = dest
+        elif spec.download_kind == "direct":
+            dest = raw_paths[0]
+            resolved = dest.resolve()
+            if resolved not in seen_dests:
+                seen_dests.add(resolved)
+                ordered_dests.append(dest)
+                url = spec.source_urls[0]
+                backups = spec.backup_urls
+                download_jobs.append(
+                    lambda u=url, b=backups, d=dest: _download_file(
+                        u,
+                        d,
+                        backup_urls=b,
+                        expected_magic=HDF5_MAGIC,
+                        force=force,
+                    )
+                )
+        elif spec.download_kind == "multi_direct":
+            for url, dest in zip(spec.source_urls, raw_paths):
+                resolved = dest.resolve()
+                if resolved not in seen_dests:
+                    seen_dests.add(resolved)
+                    ordered_dests.append(dest)
+                    download_jobs.append(
+                        lambda u=url, d=dest: _download_file(
+                            u,
+                            d,
+                            expected_magic=HDF5_MAGIC,
+                            force=force,
+                        )
+                    )
+        elif spec.download_kind == "gdrive":
+            dest = raw_paths[0]
+            resolved = dest.resolve()
+            if resolved not in seen_dests:
+                seen_dests.add(resolved)
+                ordered_dests.append(dest)
+                gid = spec.gdrive_id
+                assert gid is not None
+                download_jobs.append(
+                    lambda g=gid, d=dest: _download_gdrive_file(
+                        g,
+                        d,
+                        expected_magic=HDF5_MAGIC,
+                        force=force,
+                    )
+                )
+        else:
+            raise ValueError(f"Unsupported download_kind: {spec.download_kind}")
+
+    if skip_download:
+        missing = [p for p in ordered_dests if not p.exists()]
+        if missing:
+            raise FileNotFoundError(
+                f"Missing raw files with --skip-download: {missing}"
+            )
+        return
+
+    for (url, backups), member_map in cfgen_groups.items():
+        if member_map:
+            download_jobs.append(
+                lambda u=url, b=backups, m=member_map: extract_zip_entries_via_http_range(
+                    u,
+                    m,
+                    backup_urls=b,
+                    force=force,
+                    max_workers=workers,
+                )
+            )
+
+    if not download_jobs:
+        return
+    if workers <= 1 or len(download_jobs) == 1:
+        for job in download_jobs:
+            job()
+        return
+
+    with ThreadPoolExecutor(max_workers=min(workers, len(download_jobs))) as pool:
+        futures = [pool.submit(job) for job in download_jobs]
+        for fut in as_completed(futures):
+            fut.result()
+
+
 def prepare_datasets(
     datasets: str | Sequence[str] = "all",
     data_root: str | Path = "./data",
@@ -2053,37 +2213,55 @@ def prepare_datasets(
     min_genes: int | None = None,
     min_cells: int | None = None,
     seed: int = 42,
+    workers: int | str = 1,
 ) -> dict[str, PreparedDataset]:
     """Prepare one or more benchmark datasets (or 'all' / 'table1'..'table5') and write manifest.json."""
+    n_workers = resolve_workers(workers)
     root = Path(data_root)
     root.mkdir(parents=True, exist_ok=True)
     selected = resolve_dataset_names(datasets)
+
+    specs = [get_dataset_spec(name) for name in selected]
+    pending_specs = [
+        spec
+        for spec in specs
+        if force
+        or subset_cells is not None
+        or not _outputs_ready(get_output_paths(spec.name, root))
+    ]
 
     loaded_embeddings: dict[str, np.ndarray] | None = None
     emb_path: Path | None = (
         Path(gene_embedding_path) if gene_embedding_path is not None else None
     )
 
-    results: dict[str, PreparedDataset] = {}
-    for name in selected:
-        spec = get_dataset_spec(name)
-        out_paths = get_output_paths(spec.name, root)
-        needs_build = force or subset_cells is not None or not _outputs_ready(out_paths)
-        if needs_build and loaded_embeddings is None:
-            emb_path = ensure_genept_embeddings(
-                root,
-                gene_embedding_path=gene_embedding_path,
-                force=force,
-                skip_download=skip_download,
-            )
-            loaded_embeddings = load_gene_embeddings(str(emb_path))
+    # Step A: Ensure and load GenePT embeddings once upfront when any dataset needs building.
+    if pending_specs:
+        emb_path = ensure_genept_embeddings(
+            root,
+            gene_embedding_path=gene_embedding_path,
+            force=force,
+            skip_download=skip_download,
+        )
+        loaded_embeddings = load_gene_embeddings(str(emb_path))
 
-        results[name] = prepare_dataset(
-            name,
+    # Step B: Deduplicate raw files by destination path and download concurrently.
+    _prepare_unique_raw_files(
+        pending_specs,
+        root,
+        skip_download=skip_download,
+        force=force,
+        workers=n_workers,
+    )
+
+    # Step C: Preprocess and run OT Gene Block Construction concurrently (all raw files ready).
+    def _build_one(ds_name: str) -> PreparedDataset:
+        return prepare_dataset(
+            ds_name,
             data_root=root,
             gene_embedding_path=emb_path,
             gene_embeddings=loaded_embeddings,
-            skip_download=skip_download,
+            skip_download=True,
             force=force,
             subset_cells=subset_cells,
             ot_method=ot_method,
@@ -2094,6 +2272,19 @@ def prepare_datasets(
             min_cells=min_cells,
             seed=seed,
         )
+
+    results: dict[str, PreparedDataset] = {}
+    if n_workers <= 1 or len(selected) <= 1:
+        for name in selected:
+            results[name] = _build_one(name)
+    else:
+        with ThreadPoolExecutor(max_workers=min(n_workers, len(selected))) as pool:
+            fut_to_name = {pool.submit(_build_one, name): name for name in selected}
+            raw_results: dict[str, PreparedDataset] = {}
+            for fut in as_completed(fut_to_name):
+                raw_results[fut_to_name[fut]] = fut.result()
+        for name in selected:
+            results[name] = raw_results[name]
 
     manifest_emb = emb_path if emb_path is not None else (root / "genept" / GENEPT_PICKLE_NAME)
     _update_manifest(root, manifest_emb, results)

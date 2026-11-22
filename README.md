@@ -184,17 +184,24 @@ REPRODUCIBILITY.md    Detailed ICLR 2026 paper reproduction guide & target refer
 
 > **Colab Link Note**: The badge above points to [`notebooks/SAVE_ICLR2026_Reproduce_Colab.ipynb`](notebooks/SAVE_ICLR2026_Reproduce_Colab.ipynb) on the `reproduce-iclr2026` branch (`blob/reproduce-iclr2026/...`; update to `blob/main/...` once merged to `main`).
 
-All five quantitative benchmarks (**Tables 1–5**) can be reproduced either in **Google Colab Pro+ (H100/A100)** or locally via [`examples/reproduce_iclr2026.py`](examples/reproduce_iclr2026.py):
+All five quantitative benchmarks (**Tables 1–5**) can be reproduced either in **Google Colab Pro+ (G4 96 GB / H100 / A100)** or locally via [`examples/reproduce_iclr2026.py`](examples/reproduce_iclr2026.py):
 
 ```bash
 # Preview execution plan and expected output paths
 python examples/reproduce_iclr2026.py --tasks all --data-root ./data --dry-run
 
-# Run all 5 paper tables end-to-end (prepares missing datasets, trains/evaluates, exports summary JSON/MD)
-python examples/reproduce_iclr2026.py --tasks all --data-root ./data --output-root ./outputs/iclr2026 --device 0
+# Run all 5 paper tables end-to-end with GPU & CPU parallelism (auto-saturates >=40/75 GB GPUs)
+python examples/reproduce_iclr2026.py \
+  --tasks all \
+  --data-root ./data \
+  --output-root ./outputs/iclr2026 \
+  --gpu-workers auto \
+  --cpu-workers auto \
+  --prep-workers 4 \
+  --device 0
 
 # Or run a specific table (table1 | table2 | table3 | table4 | table5)
-python examples/reproduce_iclr2026.py --tasks table2 --data-root ./data --output-root ./outputs/iclr2026 --device 0
+python examples/reproduce_iclr2026.py --tasks table2 --data-root ./data --output-root ./outputs/iclr2026 --gpu-workers auto --device 0
 ```
 
 See [`REPRODUCIBILITY.md`](REPRODUCIBILITY.md) for dataset URLs, model hyperparameters, hardware expectations, and full Paper Target Reference tables.
@@ -238,17 +245,17 @@ Notes:
 
 ## Dataset Preparation CLI
 
-Download, standardize, normalize (`normalize_total(1e4)` + `log1p`), HVG-filter, and OT-partition (`ot.emd`, `numItermax=1000000`) all ICLR 2026 benchmark datasets and GenePT v2 embeddings via [`examples/prepare_datasets.py`](examples/prepare_datasets.py):
+Download, standardize, normalize (`log1p`-only for Table 2 dual-condition; `normalize_total(1e4)` + `log1p` for Tables 1, 3, 4, and 5), HVG-filter, and OT-partition (`ot.emd`, `numItermax=1000000`) all ICLR 2026 benchmark datasets and GenePT v2 embeddings via [`examples/prepare_datasets.py`](examples/prepare_datasets.py):
 
 ```bash
 # List all registered datasets, verified public URLs, and processed output paths
 python examples/prepare_datasets.py --list-datasets
 
-# Download and preprocess all datasets for Tables 1-5
-python examples/prepare_datasets.py --datasets all --data-root ./data
+# Download and preprocess all datasets for Tables 1-5 concurrently
+python examples/prepare_datasets.py --datasets all --data-root ./data --workers auto
 
 # Or prepare a single table group or subset of datasets
-python examples/prepare_datasets.py --datasets table2 --data-root ./data
+python examples/prepare_datasets.py --datasets table2 --data-root ./data --workers 4
 python examples/prepare_datasets.py --datasets heart pbmc_ifn --data-root ./data --subset-cells 512
 ```
 
@@ -462,6 +469,7 @@ Loop over all cell types in the dataset:
 ```bash
 uv run python examples/perturbation_prediction/run_leave_one_out.py \
   --data-path /path/to/data.h5ad \
+  --workers auto \
   --output-dir ./outputs/perturbation_leave_one_out
 ```
 
@@ -477,13 +485,14 @@ In addition to per-cell-type outputs, the leave-one-out script produces a `summa
 
 ### Run Batch Effect Correction (BEC + scIB)
 
-The BEC workflow uses `SAVE-B-perturb` (`gene_block_size=400`, `sample_mask_prob=0.0`, `col_msk_threshold=0.6`) with `LDM_raw` conditional batch transfer across every target batch, followed by 30-PC PCA embedding and pure-Python `scib` evaluation (`avg_bio`, `avg_batch`, `scib_score = 0.6 * avg_bio + 0.4 * avg_batch`):
+The BEC workflow uses `SAVE-B-perturb` (`gene_block_size=400`, `sample_mask_prob=0.0`, `col_msk_threshold=0.6`) with `LDM_raw` conditional batch transfer across every target batch, followed by 30-PC PCA embedding and parallel pure-Python `scib` evaluation (`avg_bio`, `avg_batch`, `scib_score = 0.6 * avg_bio + 0.4 * avg_batch`):
 
 ```bash
 python examples/bec_integration/run_bec.py \
   --data-path ./data/processed/table4_bec/lung_atlas_hvg2000_GBS400.h5ad \
   --task-name lung_atlas_bec \
   --output-dir ./outputs/bec_integration/lung_atlas_bec \
+  --scib-workers 8 \
   --device 0
 ```
 

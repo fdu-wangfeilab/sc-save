@@ -5,7 +5,11 @@ from __future__ import annotations
 import functools
 import inspect
 import json
+import multiprocessing
+import os
 import re
+import tempfile
+from concurrent.futures import ProcessPoolExecutor
 from contextlib import contextmanager
 from pathlib import Path
 from typing import Any
@@ -59,6 +63,55 @@ def get_device(device_id: int) -> torch.device:
     if device_id < 0 or not torch.cuda.is_available():
         return torch.device("cpu")
     return torch.device(f"cuda:{device_id}")
+
+
+def resolve_scib_workers(scib_workers: int = 0) -> int:
+    """Resolve worker process count for CPU scIB evaluation (0 = auto)."""
+    if int(scib_workers) <= 0:
+        return min(8, os.cpu_count() or 1)
+    return max(1, int(scib_workers))
+
+
+def resolve_transfer_batch_size(device: torch.device, transfer_batch_size: int) -> int:
+    """Increase GPU transfer batch size on >=40 GB GPUs for better throughput."""
+    if device.type == "cuda" and torch.cuda.is_available():
+        try:
+            total_gb = torch.cuda.get_device_properties(device).total_memory / (1024**3)
+            if total_gb >= 40.0:
+                return max(int(transfer_batch_size), 2048)
+        except RuntimeError:
+            pass
+    return int(transfer_batch_size)
+
+
+_SCIB_WORKER_STATE: dict[str, Any] = {}
+
+
+def _init_scib_worker(eval_h5ad_path: str, batch_key: str, cell_type_key: str) -> None:
+    adata = sc.read_h5ad(eval_h5ad_path)
+    adata.obs[batch_key] = adata.obs[batch_key].astype("category")
+    adata.obs[cell_type_key] = adata.obs[cell_type_key].astype("category")
+    _SCIB_WORKER_STATE["adata"] = adata
+    _SCIB_WORKER_STATE["batch_key"] = batch_key
+    _SCIB_WORKER_STATE["cell_type_key"] = cell_type_key
+
+
+def _scib_eval_worker(target_batch: str, npy_path: str) -> tuple[str, dict[str, float]]:
+    adata = _SCIB_WORKER_STATE["adata"]
+    batch_key = _SCIB_WORKER_STATE["batch_key"]
+    cell_type_key = _SCIB_WORKER_STATE["cell_type_key"]
+    embed_key = f"transfer_to_{target_batch}"
+    adata.obsm[embed_key] = np.load(npy_path)
+    try:
+        metrics = scib_eval(
+            adata,
+            batch_key=batch_key,
+            cell_type_key=cell_type_key,
+            embed_key=embed_key,
+        )
+    finally:
+        adata.obsm.pop(embed_key, None)
+    return target_batch, metrics
 
 
 def _sanitize_name(value: Any) -> str:
@@ -330,6 +383,7 @@ def run_bec_integration(
     latent_block_size: int | None = None,
     pca_components: int = 30,
     transfer_batch_size: int = 256,
+    scib_workers: int = 0,
     max_target_batches: int = 0,
     seed: int = 1202,
     overwrite_ckpt: bool = False,
@@ -405,6 +459,7 @@ def run_bec_integration(
     if max_target_batches > 0:
         batches = batches[:max_target_batches]
 
+    effective_transfer_bs = resolve_transfer_batch_size(device, transfer_batch_size)
     embedding_paths: dict[str, str] = {}
     per_batch_metrics: dict[str, dict[str, float]] = {}
 
@@ -417,21 +472,57 @@ def run_bec_integration(
             cell_type_key=cell_type_key,
             cond_cols=list(cond_cols),
             pca_components=pca_components,
-            transfer_batch_size=transfer_batch_size,
+            transfer_batch_size=effective_transfer_bs,
         )
         npy_path = emb_dir / f"transfer_to_{_sanitize_name(target_batch)}.npy"
         np.save(npy_path, latent)
         embedding_paths[target_batch] = str(npy_path)
 
-        if run_scib:
-            embed_key = f"transfer_to_{target_batch}"
-            eval_adata.obsm[embed_key] = latent
-            per_batch_metrics[target_batch] = scib_eval(
-                eval_adata,
-                batch_key=batch_key,
-                cell_type_key=cell_type_key,
-                embed_key=embed_key,
+    n_cells = int(eval_adata.n_obs)
+    n_genes = int(eval_adata.n_vars)
+    del save_model, scaled_adata
+    if device.type == "cuda" and torch.cuda.is_available():
+        torch.cuda.empty_cache()
+
+    if run_scib and batches:
+        effective_scib_workers = resolve_scib_workers(scib_workers)
+        if effective_scib_workers <= 1 or len(batches) <= 1:
+            for target_batch in batches:
+                embed_key = f"transfer_to_{target_batch}"
+                eval_adata.obsm[embed_key] = np.load(embedding_paths[target_batch])
+                per_batch_metrics[target_batch] = scib_eval(
+                    eval_adata,
+                    batch_key=batch_key,
+                    cell_type_key=cell_type_key,
+                    embed_key=embed_key,
+                )
+        else:
+            light_adata = sc.AnnData(
+                X=eval_adata.X,
+                obs=eval_adata.obs[[batch_key, cell_type_key]].copy(),
             )
+            with tempfile.TemporaryDirectory() as tmp_dir:
+                eval_h5ad_path = str(Path(tmp_dir) / "eval_base.h5ad")
+                light_adata.write_h5ad(eval_h5ad_path)
+                del light_adata
+                max_workers = min(effective_scib_workers, len(batches))
+                mp_ctx = multiprocessing.get_context("spawn")
+                raw_results: dict[str, dict[str, float]] = {}
+                with ProcessPoolExecutor(
+                    max_workers=max_workers,
+                    mp_context=mp_ctx,
+                    initializer=_init_scib_worker,
+                    initargs=(eval_h5ad_path, batch_key, cell_type_key),
+                ) as executor:
+                    futures = [
+                        executor.submit(_scib_eval_worker, tb, embedding_paths[tb])
+                        for tb in batches
+                    ]
+                    for fut in futures:
+                        tb, metrics = fut.result()
+                        raw_results[tb] = metrics
+                for tb in batches:
+                    per_batch_metrics[tb] = raw_results[tb]
 
     summary_metrics: dict[str, dict[str, float | None]] = {}
     scib_csv_path = None
@@ -461,8 +552,8 @@ def run_bec_integration(
         "gene_block_size": gene_block_size,
         "sample_mask_prob": sample_mask_prob,
         "col_msk_threshold": col_msk_threshold,
-        "n_cells": int(eval_adata.n_obs),
-        "n_genes": int(eval_adata.n_vars),
+        "n_cells": n_cells,
+        "n_genes": n_genes,
         "batches": batches,
         "embedding_paths": embedding_paths,
         "per_batch_metrics": per_batch_metrics,
@@ -486,6 +577,8 @@ __all__ = [
     "SAVE_B_PERTURB_MODEL_CONFIG",
     "SAVE_B_PERTURB_TRAIN_CONFIG",
     "compute_scib_summary",
+    "resolve_scib_workers",
+    "resolve_transfer_batch_size",
     "run_bec_integration",
     "scib_eval",
 ]

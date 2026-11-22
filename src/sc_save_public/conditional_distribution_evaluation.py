@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import json
+import os
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 import numpy as np
@@ -148,6 +150,13 @@ def safe_pearsonr(x, y):
     return pearsonr(x, y)[0]
 
 
+def resolve_eval_workers(eval_workers: int = 0) -> int:
+    """Resolve CPU worker threads for per-condition distribution metric evaluation."""
+    if int(eval_workers) <= 0:
+        return min(8, os.cpu_count() or 1)
+    return max(1, int(eval_workers))
+
+
 def compute_distribution_metrics_by_condition(
     gt_data,
     gen_data,
@@ -156,6 +165,7 @@ def compute_distribution_metrics_by_condition(
     model_name: str,
     device: torch.device,
     max_cells_per_condition: int,
+    eval_workers: int = 0,
 ):
     expected_columns = list(cond_cols) + [
         "cell_count",
@@ -164,28 +174,48 @@ def compute_distribution_metrics_by_condition(
         "Linear_MMD_unbiased_PCA",
         "RBF_MMD_PCA",
     ]
-    cond_metrics = []
-    for idx in tqdm(range(len(merged_distro)), ncols=80):
+    gt_pca_all = np.asarray(gt_data.obsm["X_pca"])
+    gen_pca_all = np.asarray(gen_data.obsm["X_pca"])
+    tasks = []
+    for idx in range(len(merged_distro)):
         if not bool(merged_distro.loc[idx, "is_equal"]):
             continue
-
         cond_dict = merged_distro.loc[idx, cond_cols].to_dict()
         gt_mask = build_condition_mask(gt_data, cond_dict)
         gen_mask = build_condition_mask(gen_data, cond_dict)
         cell_count = int(merged_distro.loc[idx, "count_gt"])
-
-        metric = compute_evaluation_metrics_fast(
-            adata_real_pca_ary=gt_data[gt_mask].obsm["X_pca"],
-            adata_generated_pca_ary=gen_data[gen_mask].obsm["X_pca"],
-            model_name=model_name,
-            device=device,
-            batch_size=min(cell_count, max_cells_per_condition),
+        tasks.append(
+            (
+                cond_dict,
+                cell_count,
+                gt_pca_all[gt_mask].copy(),
+                gen_pca_all[gen_mask].copy(),
+            )
         )
 
+    effective_workers = resolve_eval_workers(eval_workers)
+    eval_device = torch.device("cpu") if effective_workers > 1 else device
+
+    def _eval_one(task):
+        cond_dict, cell_count, gt_pca, gen_pca = task
+        metric = compute_evaluation_metrics_fast(
+            adata_real_pca_ary=gt_pca,
+            adata_generated_pca_ary=gen_pca,
+            model_name=model_name,
+            device=eval_device,
+            batch_size=min(cell_count, max_cells_per_condition),
+        )
         row = dict(cond_dict)
         row["cell_count"] = cell_count
         row.update(metric)
-        cond_metrics.append(row)
+        return row
+
+    if effective_workers <= 1 or len(tasks) <= 1:
+        cond_metrics = [_eval_one(t) for t in tqdm(tasks, ncols=80)]
+    else:
+        max_workers = min(effective_workers, len(tasks))
+        with ThreadPoolExecutor(max_workers=max_workers) as executor:
+            cond_metrics = list(tqdm(executor.map(_eval_one, tasks), total=len(tasks), ncols=80))
 
     return pd.DataFrame(cond_metrics, columns=expected_columns)
 
@@ -303,6 +333,7 @@ def run_conditional_distribution_evaluation(
     unseen_conditions=None,
     macro_cond_cols=None,
     task_name: str | None = None,
+    eval_workers: int = 0,
 ):
     if cond_cols is None:
         cond_cols = DEFAULT_COND_COLS
@@ -348,6 +379,7 @@ def run_conditional_distribution_evaluation(
         model_name=model_name,
         device=device,
         max_cells_per_condition=max_cells_per_condition,
+        eval_workers=eval_workers,
     )
 
     metrics_df = distribution_metrics_df.copy()

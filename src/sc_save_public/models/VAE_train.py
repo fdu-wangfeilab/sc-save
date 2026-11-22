@@ -11,8 +11,79 @@ from torch.distributions import Normal, kl_divergence
 from torch.optim import lr_scheduler
 from torch.distributions import Normal
 from einops import rearrange, repeat
+from torch.utils.data import TensorDataset
 from sc_save_public.models.VAE_model import VAE
 from sc_save_public.models.utils.process_h5ad import convert_adata_to_dataloader
+
+
+_MAX_GPU_RESIDENT_GB = 16.0
+_MAX_GPU_FREE_VRAM_FRACTION = 0.35
+
+
+def enable_cuda_tf32(device: torch.device) -> None:
+    """Enable TF32 matmul/cudnn acceleration on CUDA without changing FP32 model semantics."""
+    if device.type == "cuda":
+        torch.backends.cuda.matmul.allow_tf32 = True
+        torch.backends.cudnn.allow_tf32 = True
+        if hasattr(torch, "set_float32_matmul_precision"):
+            torch.set_float32_matmul_precision("high")
+
+
+def get_gpu_tensor_budget_bytes(
+    device: torch.device,
+    vram_fraction: float = _MAX_GPU_FREE_VRAM_FRACTION,
+    max_gb: float = _MAX_GPU_RESIDENT_GB,
+) -> int:
+    """Return max bytes safe to keep resident on GPU (`min(16 GB, 0.35 * free_vram)`)."""
+    if device.type != "cuda" or not torch.cuda.is_available():
+        return 0
+    try:
+        free_bytes, _ = torch.cuda.mem_get_info(device)
+    except RuntimeError:
+        return 0
+    return int(min(max_gb * (1024**3), vram_fraction * free_bytes))
+
+
+def maybe_move_tensor_dataset_to_gpu(
+    dataloader,
+    device: torch.device,
+    is_emb_ary: bool = False,
+) -> tuple[torch.Tensor, ...] | None:
+    """Copy a TensorDataset's tensors to CUDA once if they fit safely within VRAM budget."""
+    dataset = getattr(dataloader, "dataset", None)
+    if device.type != "cuda" or not isinstance(dataset, TensorDataset) or len(dataset) == 0:
+        return None
+    tensors = dataset.tensors
+    needed = (2 if not is_emb_ary or len(tensors) < 3 else 3)
+    if len(tensors) < needed:
+        return None
+
+    cast_dtypes = [torch.float32, torch.long] + ([torch.float32] if needed == 3 else [])
+    total_bytes = sum(t.nelement() * torch.empty((), dtype=dt).element_size() for t, dt in zip(tensors[:needed], cast_dtypes))
+    if total_bytes > get_gpu_tensor_budget_bytes(device):
+        return None
+
+    try:
+        return tuple(t.to(dtype=dt, device=device) for t, dt in zip(tensors[:needed], cast_dtypes))
+    except RuntimeError:
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
+        return None
+
+
+def iter_shuffled_batches(
+    tensors: tuple[torch.Tensor, ...],
+    batch_size: int,
+    device: torch.device,
+    drop_last: bool = False,
+):
+    """Yield shuffled mini-batches directly from resident tensors without DataLoader IPC."""
+    n_samples = tensors[0].shape[0]
+    perm = torch.randperm(n_samples, device=device)
+    limit = (n_samples // batch_size) * batch_size if drop_last and n_samples >= batch_size else n_samples
+    for start in range(0, limit, batch_size):
+        idx = perm[start : min(start + batch_size, limit)]
+        yield tuple(t[idx] for t in tensors)
 
 
 class DummyContextManager:
@@ -168,16 +239,16 @@ def vae_train(
     torch.cuda.manual_seed(seed)
     torch.cuda.manual_seed_all(seed)
 
+    enable_cuda_tf32(device)
+
+    if num_epoch <= 0:
+        return {}
+
     lr_milestone = num_epoch // 4
-    # if is_flash_attn:
-    #     lr = lr / 10
     optimizer = torch.optim.AdamW(vae.parameters(), lr=lr, weight_decay=weight_decay)
     scheduler1 = lr_scheduler.ConstantLR(
         optimizer=optimizer, total_iters=lr_milestone, factor=1
     )
-    # scheduler1 = lr_scheduler.LinearLR(
-    #     optimizer, total_iters=lr_milestone, start_factor=0.1, end_factor=1
-    # )
     scheduler2 = lr_scheduler.CosineAnnealingLR(
         optimizer, T_max=num_epoch, last_epoch=-1, eta_min=lr / 10
     )
@@ -185,25 +256,22 @@ def vae_train(
         optimizer, schedulers=[scheduler1, scheduler2], milestones=[lr_milestone]
     )
 
-    # cls_criterion = nn.CrossEntropyLoss()
-
     context = (
         torch.amp.autocast(device_type=device.type, dtype=torch.float16)
         if is_flash_attn
         else DummyContextManager()
     )
 
-    recon_criterion = F.binary_cross_entropy if recon_criterion == "bce" else F.mse_loss
+    recon_criterion_fn = F.binary_cross_entropy if recon_criterion == "bce" else F.mse_loss
 
     scaler = torch.amp.GradScaler(device=device)
 
     print(f"is col wise mask: {is_col_wise_mask}")
-    # print(f"is enc dec cond diff: {is_enc_dec_cond_diff}")
 
     if is_flash_attn:
 
         def step_optimizer(loss_dict):
-            optimizer.zero_grad()
+            optimizer.zero_grad(set_to_none=True)
             scaler.scale(sum(loss_dict.values())).backward()
             scaler.unscale_(optimizer)
             nn.utils.clip_grad_norm_(vae.parameters(), 1.0)
@@ -212,100 +280,112 @@ def vae_train(
     else:
 
         def step_optimizer(loss_dict):
-            optimizer.zero_grad()
+            optimizer.zero_grad(set_to_none=True)
             sum(loss_dict.values()).backward()
             nn.utils.clip_grad_norm_(vae.parameters(), 1.0)
             optimizer.step()
 
-    # print(f"is_col_wise_mask: {is_col_wise_mask}")
-    # if is_flash_attn:
-    #     print("-" * 10, "🚀 use flash attention", "-" * 10)
     print(f"is multi codebook: {is_multi_codebook}")
 
+    gpu_tensors = maybe_move_tensor_dataset_to_gpu(
+        dataloader, device, is_emb_ary=is_emb_ary
+    )
+    batch_size = int(getattr(dataloader, "batch_size", None) or len(dataloader.dataset))
+    drop_last = bool(getattr(dataloader, "drop_last", False))
+
     tq = tqdm(range(num_epoch), ncols=80)
-    for epoch in tq:
-        vae.train()
-        epoch_loss = defaultdict(float)
+    epoch_loss = {}
+    try:
+        for epoch in tq:
+            vae.train()
+            loss_accum = {
+                "recon_loss": torch.zeros((), device=device),
+                "kl_loss": torch.zeros((), device=device),
+            }
+            current_cond_msk_prob = col_msk_threshold
+            kl_penalty = 1
+            num_batches = 0
 
-        # 计算当前epoch对应的噪声解码概率
-        # if max_noise_prob is not None:
-        #     current_noise_prob = calculate_noise_prob(
-        #         current_epoch=epoch,
-        #         total_epochs=num_epoch,
-        #         warmup_epochs=lr_milestone,
-        #         min_prob=0.2,
-        #         max_prob=max_noise_prob,
-        #     )
-        # else:
-        #     current_noise_prob = -1
-
-        current_cond_msk_prob = col_msk_threshold
-
-        kl_penalty = 1
-
-        for i, data in enumerate(dataloader):
-            if is_emb_ary:
-                x, y, emb = (
-                    data[0].float().to(device),
-                    data[1].long().to(device),
-                    data[2].float().to(device),
+            batch_iter = (
+                iter_shuffled_batches(
+                    gpu_tensors, batch_size=batch_size, device=device, drop_last=drop_last
                 )
-                c = add_cond_mask_with_emb(
-                    emb, y, col_msk_threshold, vae, is_col_wise_mask, is_multi_codebook
-                )
-            else:
-                x, y = data[0].float().to(device), data[1].long().to(device)
-                c = add_cond_mask(
-                    y, col_msk_threshold, vae, is_col_wise_mask, is_multi_codebook
-                )
+                if gpu_tensors is not None
+                else dataloader
+            )
 
-            with context:
-                z, mu, var = vae.encoder(x, c)
-                recon_x = vae.decoder(
-                    z,
-                    c,
-                )
+            for data in batch_iter:
+                num_batches += 1
+                if gpu_tensors is not None:
+                    if is_emb_ary:
+                        x, y, emb = data[0], data[1], data[2]
+                        c = add_cond_mask_with_emb(
+                            emb, y, col_msk_threshold, vae, is_col_wise_mask, is_multi_codebook
+                        )
+                    else:
+                        x, y = data[0], data[1]
+                        c = add_cond_mask(
+                            y, col_msk_threshold, vae, is_col_wise_mask, is_multi_codebook
+                        )
+                else:
+                    if is_emb_ary:
+                        x, y, emb = (
+                            data[0].float().to(device),
+                            data[1].long().to(device),
+                            data[2].float().to(device),
+                        )
+                        c = add_cond_mask_with_emb(
+                            emb, y, col_msk_threshold, vae, is_col_wise_mask, is_multi_codebook
+                        )
+                    else:
+                        x, y = data[0].float().to(device), data[1].long().to(device)
+                        c = add_cond_mask(
+                            y, col_msk_threshold, vae, is_col_wise_mask, is_multi_codebook
+                        )
 
-                # using bce loss estimating the error
-                recon_loss = recon_criterion(recon_x, x) * x.size(-1)
-                # 将 mu, var 的后两维展开为一维
+                with context:
+                    z, mu, var = vae.encoder(x, c)
+                    recon_x = vae.decoder(z, c)
+
+                # Keep BCE & KL computations in FP32 for numerical parity.
+                recon_loss = recon_criterion_fn(recon_x.float(), x.float()) * x.size(-1)
                 kl_loss = kl_div(
-                    rearrange(mu, "b s d -> (b s) d"),
-                    rearrange(var, "b s d -> (b s) d"),
+                    rearrange(mu.float(), "b s d -> (b s) d"),
+                    rearrange(var.float(), "b s d -> (b s) d"),
                 )
-                # recon_loss = F.mse_loss(recon_x, x) * x.size(-1)
                 loss = {
                     "recon_loss": recon_loss,
                     "kl_loss": kl_scale * kl_loss * kl_penalty,
-                    # "cls_loss": cls_loss,
                 }
 
-            step_optimizer(loss)
+                step_optimizer(loss)
 
-            for k, v in loss.items():
-                epoch_loss[k] += loss[k].item()
+                for k, v in loss.items():
+                    loss_accum[k] = loss_accum[k] + v.detach()
 
-        # if is_lr_scheduler:
-        scheduler.step()
+            scheduler.step()
 
-        epoch_loss = {k: v / (i + 1) for k, v in epoch_loss.items()}
-        epoch_info = ",".join(["{}={:.3f}".format(k, v) for k, v in epoch_loss.items()])
-        tq.set_postfix_str(epoch_info)
+            denom = max(1, num_batches)
+            epoch_loss = {k: (v / denom).item() for k, v in loss_accum.items()}
+            epoch_info = ",".join(["{}={:.3f}".format(k, v) for k, v in epoch_loss.items()])
+            tq.set_postfix_str(epoch_info)
 
-        if loss_monitor:
-            loss_monitor.log(
-                {
-                    "recon_loss": epoch_loss["recon_loss"],
-                    "kl_loss": epoch_loss["kl_loss"],
-                    "lr": scheduler.get_last_lr()[0],
-                    # "cls_loss": epoch_loss["cls_loss"],
-                    # "noise_prob": current_noise_prob,  # 记录当前噪声概率
-                    "cond_msk_prob": current_cond_msk_prob,
-                }
-            )
+            if loss_monitor:
+                loss_monitor.log(
+                    {
+                        "recon_loss": epoch_loss["recon_loss"],
+                        "kl_loss": epoch_loss["kl_loss"],
+                        "lr": scheduler.get_last_lr()[0],
+                        "cond_msk_prob": current_cond_msk_prob,
+                    }
+                )
 
-        if tune_session:
-            tune_session.report({"loss": sum(epoch_loss.values())})
+            if tune_session:
+                tune_session.report({"loss": sum(epoch_loss.values())})
+    finally:
+        if gpu_tensors is not None:
+            del gpu_tensors
+            if device.type == "cuda" and torch.cuda.is_available():
+                torch.cuda.empty_cache()
 
-    # for some config record
     return epoch_loss

@@ -33,6 +33,7 @@ def parse_args():
     parser.add_argument("--gene-block-size", type=int, default=SAVE_B_PERTURB_MODEL_CONFIG["gene_block_size"])
     parser.add_argument("--pca-components", type=int, default=30)
     parser.add_argument("--transfer-batch-size", type=int, default=256)
+    parser.add_argument("--scib-workers", type=int, default=0, help="0 auto-selects up to 8 CPU workers.")
     parser.add_argument("--max-target-batches", type=int, default=0, help="0 evaluates all batches.")
     parser.add_argument("--seed", type=int, default=1202)
     parser.add_argument("--overwrite-ckpt", action="store_true")
@@ -60,6 +61,7 @@ def main():
         gene_block_size=args.gene_block_size,
         pca_components=args.pca_components,
         transfer_batch_size=args.transfer_batch_size,
+        scib_workers=args.scib_workers,
         max_target_batches=args.max_target_batches,
         seed=args.seed,
         overwrite_ckpt=args.overwrite_ckpt,

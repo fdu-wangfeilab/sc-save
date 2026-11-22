@@ -39,6 +39,12 @@ def parse_args():
     parser.add_argument("--col-msk-threshold", type=float, default=0.6)
     parser.add_argument("--n-pca-components", type=int, default=30)
     parser.add_argument("--n-wd-mmd-repeats", type=int, default=10)
+    parser.add_argument(
+        "--workers",
+        type=str,
+        default="1",
+        help="Parallel cell-type workers ('auto' or positive integer; default 1).",
+    )
     return parser.parse_args()
 
 
@@ -50,6 +56,7 @@ def main():
 
         train_config = dict(PERTURB_TRAIN_CONFIG)
         train_config["epoch"] = args.epoch
+    workers: int | str = args.workers if args.workers.strip().lower() == "auto" else int(args.workers)
     run_leave_one_out(
         data_path=args.data_path,
         output_dir=args.output_dir,
@@ -70,6 +77,7 @@ def main():
         col_msk_threshold=args.col_msk_threshold,
         n_pca_components=args.n_pca_components,
         n_wd_mmd_repeats=args.n_wd_mmd_repeats,
+        workers=workers,
     )
 
 

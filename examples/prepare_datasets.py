@@ -114,6 +114,15 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         help="Random seed for OT initialization and optional subsampling (default: 42).",
     )
     parser.add_argument(
+        "--workers",
+        type=str,
+        default="1",
+        help=(
+            "Number of worker threads for concurrent download and OT preprocessing, "
+            "or 'auto' for min(8, cpu_count) (default: 1)."
+        ),
+    )
+    parser.add_argument(
         "--list-datasets",
         action="store_true",
         help="Print all registered datasets, verified URLs, and expected output paths.",
@@ -177,6 +186,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         min_genes=args.min_genes,
         min_cells=args.min_cells,
         seed=args.seed,
+        workers=args.workers,
     )
 
     summary = {

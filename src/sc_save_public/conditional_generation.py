@@ -67,6 +67,23 @@ def _sanitize_name(value: str) -> str:
     return re.sub(r"[^A-Za-z0-9._-]+", "_", str(value)).strip("_") or "task"
 
 
+def resolve_infer_batch_size(
+    device: torch.device,
+    batch_size: int,
+    min_vram_gb: float = 40.0,
+    target_batch_size: int = 4096,
+) -> int:
+    """Use larger inference batch sizes on >=40 GB GPUs without changing training batch_size."""
+    if device.type == "cuda" and torch.cuda.is_available():
+        try:
+            total_gb = torch.cuda.get_device_properties(device).total_memory / (1024**3)
+            if total_gb >= min_vram_gb:
+                return max(int(batch_size), int(target_batch_size))
+        except RuntimeError:
+            pass
+    return int(batch_size)
+
+
 def _load_torch_state_dict(ckpt_path: Path, device: torch.device):
     try:
         return torch.load(ckpt_path, map_location=device, weights_only=False)
@@ -403,6 +420,7 @@ def run_formal_generation(
     total_groups = 0
 
     start = time.time()
+    infer_batch_size = resolve_infer_batch_size(save_model.device, batch_size)
     for split_adata_ori, split_scaler in split_targets:
         cond_info = (
             split_adata_ori.obs[cond_cols]
@@ -434,7 +452,9 @@ def run_formal_generation(
                 f"{cond_dict} count={sub_data.shape[0]}"
             )
 
+            group_infer_bs = min(infer_batch_size, max(1, sub_data.n_obs))
             z_from_vae = save_model.get_latent_from_adata(
+                batch_size=group_infer_bs,
                 adata=sub_data,
                 is_encode_with_cond=False,
                 latent_pos=0,
@@ -442,7 +462,7 @@ def run_formal_generation(
             gen_data, gen_z_fm = save_model.cond_generate_with_guidance_fm(
                 generate_count=int(cond_info.loc[i, "count"]),
                 target_cond=cond_dict,
-                batch_size=min(batch_size, max(1, sub_data.n_obs)),
+                batch_size=group_infer_bs,
                 guidance_weights=guidance_weights,
                 seq_length=seq_length,
                 sample_steps=sample_steps,

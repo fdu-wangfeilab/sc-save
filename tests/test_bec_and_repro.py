@@ -523,3 +523,376 @@ def test_example_cli_help(script_rel):
         check=False,
     )
     assert proc.returncode == 0, proc.stderr
+
+
+def test_ditblock_sdpa_and_single_attention_call():
+    from sc_save_public.models.VAE_model import Attention, DiTblock
+
+    torch.manual_seed(0)
+    attn = Attention(dim=16, num_heads=2, qkv_bias=True, attn_drop=0.0, proj_drop=0.0)
+    attn.eval()
+    x = torch.randn(4, 5, 16)
+    with torch.no_grad():
+        out_sdpa = attn(x, is_output_attn_weight=False)
+        out_manual, _ = attn(x, is_output_attn_weight=True)
+    assert torch.allclose(out_sdpa, out_manual, atol=1e-5, rtol=1e-5)
+
+    blk = DiTblock(feature_dim=16, types_of_conds=2, num_heads=2)
+    blk.eval()
+    call_count = {"n": 0}
+    orig_attn_forward = blk.attn.forward
+
+    def _counting_forward(*args, **kwargs):
+        call_count["n"] += 1
+        return orig_attn_forward(*args, **kwargs)
+
+    blk.attn.forward = _counting_forward
+    c = torch.randn(4, 2, 16)
+    with torch.no_grad():
+        out_blk = blk(x, c)
+    assert out_blk.shape == x.shape
+    assert call_count["n"] == 1
+
+
+def test_precomputed_latent_fm_train_matches_posterior_and_is_finite():
+    from torch.utils.data import DataLoader, TensorDataset
+    from sc_save_public.models.flow_matching_train import flow_matching_train
+    from sc_save_public.models.fm.denoising_model import MLPTimeStep
+    from sc_save_public.models.fm.fm import FM
+
+    adata = _make_synthetic_adata(n_obs=20, n_vars=40, seed=21)
+    model = SAVE(
+        adata=adata,
+        device=torch.device("cpu"),
+        condition_cols=["batch", "cell_type"],
+        hidden_dim=16,
+        enc_dim=16,
+        expand_dim=32,
+        enc_num_heads=2,
+        dec_num_heads=2,
+        enc_depth=1,
+        dec_depth=1,
+        gene_block_size=40,
+        latent_block_size=40,
+    )
+    denoising = MLPTimeStep(
+        in_dim=16,
+        conditional=True,
+        seq_length=1,
+        hidden_dim=64,
+        embedding_dim=64,
+        num_conds=2,
+        dropout_prob=0.0,
+        n_blocks=1,
+        label_encoder_dict=model.label_encoder_dict,
+        mask_id=model.mask_id,
+        block_type="DiT",
+        num_heads=2,
+    )
+    fm = FM(denoising_model=denoising, device=torch.device("cpu"))
+
+    x_tensor = torch.rand(20, 40)
+    y_tensor = torch.ones(20, 2, dtype=torch.long)
+    loader = DataLoader(TensorDataset(x_tensor, y_tensor), batch_size=8, shuffle=True)
+
+    # Confirm encoder dropout is off in eval() so precomputed (mu, var) is deterministic
+    model.model.eval()
+    mask_emb = torch.zeros(20, 2, 32)
+    with torch.no_grad():
+        _, mu1, var1 = model.model.encoder(x_tensor, mask_emb)
+        _, mu2, var2 = model.model.encoder(x_tensor, mask_emb)
+    assert torch.allclose(mu1, mu2)
+    assert torch.allclose(var1, var2)
+
+    losses = flow_matching_train(
+        vae=model.model,
+        fm=fm,
+        dataloader=loader,
+        num_epoch=2,
+        device=torch.device("cpu"),
+        lr=1e-4,
+        weight_decay=2.5e-5,
+        seed=1202,
+        is_emb_ary=False,
+    )
+    assert "loss" in losses and np.isfinite(losses["loss"])
+
+
+def test_parallel_eval_workers_matches_serial(tmp_path):
+    obs = pd.DataFrame(
+        {
+            "batch": ["b1"] * 12 + ["b2"] * 12,
+            "cell_type": (["T", "T", "T", "B", "B", "B"] * 4),
+        },
+        index=[f"c_{i}" for i in range(24)],
+    )
+    gt = _make_synthetic_adata(n_obs=24, n_vars=20, obs_df=obs.copy(), seed=31)
+    gen = _make_synthetic_adata(n_obs=24, n_vars=20, obs_df=obs.copy(), seed=32)
+    gt_path = tmp_path / "gt.h5ad"
+    gen_path = tmp_path / "gen.h5ad"
+    gt.write_h5ad(gt_path)
+    gen.write_h5ad(gen_path)
+
+    res_serial = run_conditional_distribution_evaluation(
+        gt_path=str(gt_path),
+        gen_path=str(gen_path),
+        output_dir=str(tmp_path / "eval_s"),
+        pca_components=5,
+        include_expression_metrics=False,
+        eval_workers=1,
+    )
+    res_parallel = run_conditional_distribution_evaluation(
+        gt_path=str(gt_path),
+        gen_path=str(gen_path),
+        output_dir=str(tmp_path / "eval_p"),
+        pca_components=5,
+        include_expression_metrics=False,
+        eval_workers=2,
+    )
+    df_s = pd.read_csv(res_serial["per_condition_metrics_path"])
+    df_p = pd.read_csv(res_parallel["per_condition_metrics_path"])
+    pd.testing.assert_frame_equal(df_s, df_p, rtol=1e-5, atol=1e-5)
+
+
+def test_parallel_scib_workers_matches_serial(tmp_path):
+    pytest.importorskip("scib")
+    adata = _make_synthetic_adata(n_obs=48, n_vars=40, seed=41)
+    data_path = tmp_path / "bec.h5ad"
+    adata.write_h5ad(data_path)
+
+    common = dict(
+        data_path=str(data_path),
+        task_name="par_bec",
+        device_id=-1,
+        epoch=1,
+        batch_size=16,
+        hidden_dim=16,
+        enc_dim=16,
+        expand_dim=32,
+        enc_num_heads=2,
+        dec_num_heads=2,
+        enc_depth=1,
+        dec_depth=1,
+        gene_block_size=40,
+        latent_block_size=40,
+        pca_components=8,
+        transfer_batch_size=16,
+        seed=1202,
+    )
+    ckpt_dir = tmp_path / "shared_ckpt"
+    # Train once so both serial and parallel runs start from identical loaded checkpoint & RNG state
+    run_bec_integration(
+        output_dir=str(tmp_path / "out_warmup"),
+        ckpt_dir=str(ckpt_dir),
+        scib_workers=1,
+        run_scib=False,
+        **common,
+    )
+    res_s = run_bec_integration(
+        output_dir=str(tmp_path / "out_s"),
+        ckpt_dir=str(ckpt_dir),
+        scib_workers=1,
+        **common,
+    )
+    res_p = run_bec_integration(
+        output_dir=str(tmp_path / "out_p"),
+        ckpt_dir=str(ckpt_dir),
+        scib_workers=2,
+        **common,
+    )
+    assert res_p["report"]["batches"] == res_s["report"]["batches"]
+    for b in res_s["report"]["batches"]:
+        np.testing.assert_allclose(
+            np.load(res_s["embedding_paths"][b]),
+            np.load(res_p["embedding_paths"][b]),
+            rtol=1e-5,
+            atol=1e-5,
+        )
+    for metric in ("avg_bio", "avg_batch", "scib_score", "PCR_batch"):
+        assert res_p["report"]["summary"][metric]["mean"] == pytest.approx(
+            res_s["report"]["summary"][metric]["mean"], abs=1e-4
+        )
+
+
+def test_parallel_perturbation_loo_matches_serial_and_oom_fallback(tmp_path, monkeypatch):
+    from types import SimpleNamespace
+    import sc_save_public.perturbation_prediction as pp
+
+    # Verify VRAM-tier worker resolution helper
+    monkeypatch.setattr(torch.cuda, "is_available", lambda: True)
+    monkeypatch.setattr(
+        torch.cuda,
+        "get_device_properties",
+        lambda dev: SimpleNamespace(total_memory=96 * (1024**3)),
+    )
+    assert pp.resolve_perturbation_workers("auto", torch.device("cuda:0"), 7) == 7
+    monkeypatch.setattr(
+        torch.cuda,
+        "get_device_properties",
+        lambda dev: SimpleNamespace(total_memory=48 * (1024**3)),
+    )
+    assert pp.resolve_perturbation_workers("auto", torch.device("cuda:0"), 7) == 4
+    assert pp.resolve_perturbation_workers("auto", torch.device("cpu"), 7) == 1
+    monkeypatch.setattr(torch.cuda, "is_available", lambda: False)
+
+    rows = []
+    for ct in ("CD8T", "B"):
+        for cond in ("control", "stimulated"):
+            for _ in range(10):
+                rows.append({"cell_type": ct, "condition": cond})
+    obs = pd.DataFrame(rows, index=[f"pc_{i}" for i in range(len(rows))])
+    adata = _make_synthetic_adata(n_obs=40, n_vars=40, obs_df=obs, seed=55)
+    data_path = tmp_path / "perturb.h5ad"
+    adata.write_h5ad(data_path)
+
+    common = dict(
+        data_path=str(data_path),
+        device_id=-1,
+        train_with_ctrl=False,
+        transfer_batch_size=8,
+        train_config={"epoch": 1, "batch_size": 16, "lr": 1e-4, "weight_decay": 2.5e-5, "iter": 10, "is_lr_scheduler": True},
+        model_config={
+            "kl_scale": 0.5,
+            "hidden_dim": 16,
+            "enc_dim": 16,
+            "expand_dim": 32,
+            "enc_num_heads": 2,
+            "dec_num_heads": 2,
+            "enc_depth": 1,
+            "dec_depth": 1,
+            "gene_block_size": 40,
+            "latent_block_size": 40,
+            "is_flash_attn": False,
+        },
+        sample_mask_prob=0.0,
+        col_msk_threshold=0.6,
+        n_pca_components=8,
+        n_wd_mmd_repeats=2,
+    )
+    res_s = run_leave_one_out(output_dir=str(tmp_path / "loo_s"), workers=1, **common)
+    res_p = run_leave_one_out(output_dir=str(tmp_path / "loo_p"), workers=2, **common)
+    for k in ("r2", "mse", "pcc", "wd", "mmd"):
+        assert res_p["average_metrics"][k] == pytest.approx(res_s["average_metrics"][k], abs=1e-4)
+
+    # Simulate worker OOM exception -> serial retry succeeds cleanly
+    class _FakeFuture:
+        def __init__(self, fail_oom: bool):
+            self.fail_oom = fail_oom
+
+        def result(self):
+            if self.fail_oom:
+                raise RuntimeError("CUDA out of memory. Tried to allocate 1.00 GiB")
+            return ("CD8T", {"r2": 0.9, "mse": 0.01, "pcc": 0.95, "wd": 4.0, "mmd": 0.1})
+
+    class _FakeExecutor:
+        def __init__(self, **kwargs):
+            pass
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb):
+            return False
+
+        def submit(self, fn, kw):
+            return _FakeFuture(fail_oom=(kw["cell_type"] == "B"))
+
+    serial_called = []
+    monkeypatch.setattr(pp, "ProcessPoolExecutor", _FakeExecutor)
+    monkeypatch.setattr(
+        pp,
+        "run_perturbation",
+        lambda **kw: (serial_called.append(kw["cell_type"]), {"metrics": {"r2": 0.8, "mse": 0.02, "pcc": 0.9, "wd": 5.0, "mmd": 0.2}})[1],
+    )
+    res_retry = run_leave_one_out(output_dir=str(tmp_path / "loo_oom"), workers=2, **common)
+    assert serial_called == ["B"]
+    assert res_retry["metrics_per_cell_type"]["B"]["r2"] == pytest.approx(0.8)
+
+
+def test_reproduce_iclr2026_parallel_scheduler_and_oom_retry(tmp_path, monkeypatch):
+    from types import SimpleNamespace
+    repro = _load_repro_module()
+
+    monkeypatch.setattr(repro.torch.cuda, "is_available", lambda: True)
+    monkeypatch.setattr(
+        repro.torch.cuda,
+        "get_device_properties",
+        lambda dev: SimpleNamespace(total_memory=95 * (1024**3)),
+    )
+    assert repro.resolve_gpu_workers("auto", 0, [("table1", "pbmc3k"), ("table4", "heart_bec")]) == 4
+    assert repro.resolve_gpu_workers("auto", 0, [("table4", "heart_bec"), ("table5", "pbmc_ifn")]) == 6
+    monkeypatch.setattr(
+        repro.torch.cuda,
+        "get_device_properties",
+        lambda dev: SimpleNamespace(total_memory=40 * (1024**3)),
+    )
+    assert repro.resolve_gpu_workers("auto", 0, [("table1", "pbmc3k")]) == 2
+    monkeypatch.setattr(repro.torch.cuda, "is_available", lambda: False)
+    assert repro.resolve_gpu_workers("auto", 0, [("table1", "pbmc3k")]) == 1
+
+    data_root = tmp_path / "data"
+    for ds in ("pbmc3k", "dentategyrus"):
+        for path in repro.get_output_paths(ds, data_root).values():
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text("stub")
+
+    subproc_calls = []
+
+    def _fake_subprocess_run(cmd, stdout=None, stderr=None, text=False, check=False):
+        ds_idx = cmd.index("--datasets") + 1
+        ds_name = cmd[ds_idx]
+        res_idx = cmd.index("--results-dir") + 1
+        child_res_dir = Path(cmd[res_idx])
+        subproc_calls.append(ds_name)
+        if ds_name == "dentategyrus":
+            return SimpleNamespace(returncode=1, stdout="torch.cuda.OutOfMemoryError: CUDA out of memory")
+        child_res_dir.mkdir(parents=True, exist_ok=True)
+        (child_res_dir / "iclr2026_summary.json").write_text(
+            json.dumps(
+                {
+                    "runs": {
+                        "table1": {
+                            "pbmc3k": {
+                                "status": "completed",
+                                "observed": {"wd": 19.1, "mmd": 1.8, "mse": 0.08, "pcc": 0.93, "r2": 0.84},
+                                "target": repro.PAPER_TARGETS["table1"]["pbmc3k"],
+                                "delta": {"wd": -0.04},
+                            }
+                        }
+                    }
+                }
+            )
+        )
+        return SimpleNamespace(returncode=0, stdout="ok")
+
+    serial_retried = []
+    monkeypatch.setattr(repro.subprocess, "run", _fake_subprocess_run)
+    monkeypatch.setattr(
+        repro,
+        "_run_cond_gen_and_eval",
+        lambda **kw: (
+            serial_retried.append(kw["dataset_name"]),
+            {
+                "status": "completed",
+                "observed": {"wd": 9.2, "mmd": 0.17, "mse": 0.0, "pcc": 0.99, "r2": 0.97},
+                "target": repro.PAPER_TARGETS["table1"]["dentategyrus"],
+                "delta": {"wd": 0.04},
+            },
+        )[1],
+    )
+
+    out = repro.run_reproduction(
+        tasks="table1",
+        datasets="pbmc3k,dentategyrus",
+        data_root=data_root,
+        output_root=tmp_path / "out_par",
+        device=-1,
+        skip_prepare=True,
+        gpu_workers=2,
+        cpu_workers=2,
+    )
+    assert set(subproc_calls) == {"pbmc3k", "dentategyrus"}
+    assert serial_retried == ["dentategyrus"]
+    assert out["runs"]["table1"]["pbmc3k"]["observed"]["wd"] == pytest.approx(19.1)
+    assert out["runs"]["table1"]["dentategyrus"]["observed"]["wd"] == pytest.approx(9.2)
+    assert Path(out["summary_json_path"]).exists()

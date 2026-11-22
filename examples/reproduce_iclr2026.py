@@ -3,11 +3,18 @@
 from __future__ import annotations
 
 import argparse
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
+import inspect
 import json
+import os
 from pathlib import Path
 import re
+import subprocess
+import sys
 from typing import Any, Sequence
+
+import torch
 
 from sc_save_public.bec_integration import run_bec_integration
 from sc_save_public.conditional_distribution_evaluation import (
@@ -18,7 +25,7 @@ from sc_save_public.datasets import (
     TABLE_DATASETS,
     get_dataset_spec,
     get_output_paths,
-    prepare_dataset,
+    prepare_datasets,
     resolve_dataset_names,
 )
 from sc_save_public.perturbation_prediction import PERTURB_TRAIN_CONFIG, run_leave_one_out
@@ -171,32 +178,99 @@ def _compute_deltas(
     return deltas
 
 
-def _ensure_dataset_prepared(
-    dataset_name: str,
+def resolve_cpu_workers(cpu_workers: int | str) -> int:
+    """Resolve CPU worker count ('auto' or <=0 picks min(8, os.cpu_count() or 1))."""
+    if isinstance(cpu_workers, str):
+        token = cpu_workers.strip().lower()
+        if token == "auto":
+            return min(8, os.cpu_count() or 1)
+        val = int(token)
+    else:
+        val = int(cpu_workers)
+    if val <= 0:
+        return min(8, os.cpu_count() or 1)
+    return max(1, val)
+
+
+def resolve_gpu_workers(
+    gpu_workers: int | str,
+    device_id: int,
+    plan: list[tuple[str, str]],
+) -> int:
+    """Resolve concurrent GPU task count ('auto' saturates high-VRAM GPUs cleanly)."""
+    if isinstance(gpu_workers, str):
+        token = gpu_workers.strip().lower()
+        if token != "auto":
+            return max(1, int(token))
+    else:
+        return max(1, int(gpu_workers))
+
+    if device_id < 0 or not torch.cuda.is_available():
+        return 1
+    try:
+        total_gb = torch.cuda.get_device_properties(device_id).total_memory / (1024**3)
+    except RuntimeError:
+        return 1
+
+    if total_gb >= 75.0:
+        all_gbs400 = bool(plan) and all(t in {"table3", "table4", "table5"} for t, _ in plan)
+        return 6 if all_gbs400 else 4
+    if total_gb >= 36.0:
+        return 2
+    return 1
+
+
+def _is_oom_output(text: str) -> bool:
+    low = text.lower()
+    return any(
+        needle in low
+        for needle in (
+            "out of memory",
+            "outofmemoryerror",
+            "cublas_status_alloc_failed",
+            "cuda error",
+        )
+    )
+
+
+def _ensure_all_datasets_prepared(
+    plan: list[tuple[str, str]],
     data_root: Path,
     skip_prepare: bool,
     force_prepare: bool,
     subset_cells: int | None,
-) -> dict[str, Path]:
-    paths = get_output_paths(dataset_name, data_root)
-    missing = [p for p in paths.values() if not p.exists()]
-    if skip_prepare:
-        if missing:
-            missing_str = ", ".join(str(p) for p in missing)
-            raise FileNotFoundError(
-                f"Prepared dataset files missing for '{dataset_name}' (--skip-prepare set): {missing_str}"
-            )
-        return paths
+    prep_workers: int | str,
+) -> dict[str, dict[str, Path]]:
+    unique_names = list(dict.fromkeys(ds for _, ds in plan))
+    paths_by_dataset: dict[str, dict[str, Path]] = {}
+    needed: list[str] = []
 
-    if force_prepare or missing:
-        prepared = prepare_dataset(
-            dataset_name,
-            data_root=data_root,
-            force=force_prepare,
-            subset_cells=subset_cells,
-        )
-        return prepared.files
-    return paths
+    for ds in unique_names:
+        paths = get_output_paths(ds, data_root)
+        missing = [p for p in paths.values() if not p.exists()]
+        if skip_prepare:
+            if missing:
+                missing_str = ", ".join(str(p) for p in missing)
+                raise FileNotFoundError(
+                    f"Prepared dataset files missing for '{ds}' (--skip-prepare set): {missing_str}"
+                )
+        elif force_prepare or missing:
+            needed.append(ds)
+        paths_by_dataset[ds] = paths
+
+    if needed:
+        prep_kwargs: dict[str, Any] = {
+            "data_root": data_root,
+            "force": force_prepare,
+            "subset_cells": subset_cells,
+        }
+        if "workers" in inspect.signature(prepare_datasets).parameters:
+            prep_kwargs["workers"] = prep_workers
+        prepared = prepare_datasets(needed, **prep_kwargs)
+        for ds, record in prepared.items():
+            paths_by_dataset[ds] = record.files
+
+    return paths_by_dataset
 
 
 def _run_cond_gen_and_eval(
@@ -211,6 +285,7 @@ def _run_cond_gen_and_eval(
     batch_size: int,
     table1_eval_split: str,
     overwrite_ckpt: bool,
+    eval_workers: int = 0,
 ) -> dict[str, Any]:
     spec = get_dataset_spec(dataset_name)
     cond_cols = list(spec.cond_cols)
@@ -255,16 +330,19 @@ def _run_cond_gen_and_eval(
         overwrite_ckpt=overwrite_ckpt,
     )
 
-    eval_res = run_conditional_distribution_evaluation(
-        gt_path=gen_report["target_path"],
-        gen_path=gen_report["generation_path"],
-        output_dir=str(eval_dir),
-        cond_cols=cond_cols,
-        sort_cols=cond_cols,
-        device_id=device_id,
-        task_name=dataset_name if table == "table3" else None,
-        include_expression_metrics=True,
-    )
+    eval_kwargs: dict[str, Any] = {
+        "gt_path": gen_report["target_path"],
+        "gen_path": gen_report["generation_path"],
+        "output_dir": str(eval_dir),
+        "cond_cols": cond_cols,
+        "sort_cols": cond_cols,
+        "device_id": device_id,
+        "task_name": dataset_name if table == "table3" else None,
+        "include_expression_metrics": True,
+    }
+    if "eval_workers" in inspect.signature(run_conditional_distribution_evaluation).parameters:
+        eval_kwargs["eval_workers"] = eval_workers
+    eval_res = run_conditional_distribution_evaluation(**eval_kwargs)
     summary = eval_res["report"]["summary"]
 
     if table in {"table1", "table2"}:
@@ -316,23 +394,27 @@ def _run_table4_bec(
     batch_size: int,
     max_target_batches: int,
     overwrite_ckpt: bool,
+    scib_workers: int = 0,
 ) -> dict[str, Any]:
     spec = get_dataset_spec(dataset_name)
     run_dir = output_root / "table4" / dataset_name
-    res = run_bec_integration(
-        data_path=str(paths["full"]),
-        task_name=dataset_name,
-        output_dir=str(run_dir),
-        device_id=device_id,
-        epoch=epoch,
-        batch_size=batch_size,
-        gene_block_size=spec.gene_block_size,
-        latent_block_size=spec.gene_block_size,
-        max_target_batches=max_target_batches,
-        seed=seed,
-        overwrite_ckpt=overwrite_ckpt,
-        run_scib=True,
-    )
+    bec_kwargs: dict[str, Any] = {
+        "data_path": str(paths["full"]),
+        "task_name": dataset_name,
+        "output_dir": str(run_dir),
+        "device_id": device_id,
+        "epoch": epoch,
+        "batch_size": batch_size,
+        "gene_block_size": spec.gene_block_size,
+        "latent_block_size": spec.gene_block_size,
+        "max_target_batches": max_target_batches,
+        "seed": seed,
+        "overwrite_ckpt": overwrite_ckpt,
+        "run_scib": True,
+    }
+    if "scib_workers" in inspect.signature(run_bec_integration).parameters:
+        bec_kwargs["scib_workers"] = scib_workers
+    res = run_bec_integration(**bec_kwargs)
     summary = res["report"].get("summary", {})
     observed = {k: _metric_mean(summary, k) for k in summary}
     target = PAPER_TARGETS["table4"][dataset_name]
@@ -355,23 +437,27 @@ def _run_table5_perturb(
     epoch: int,
     batch_size: int,
     wd_mmd_repeats: int,
+    workers: int | str = 1,
 ) -> dict[str, Any]:
     run_dir = output_root / "table5" / dataset_name
     train_cfg = dict(PERTURB_TRAIN_CONFIG)
     train_cfg["epoch"] = epoch
     train_cfg["batch_size"] = batch_size
 
-    summary = run_leave_one_out(
-        data_path=str(paths["full"]),
-        output_dir=str(run_dir),
-        device_id=device_id,
-        seed=seed,
-        train_with_ctrl=False,
-        sample_mask_prob=0.0,
-        col_msk_threshold=0.6,
-        n_wd_mmd_repeats=wd_mmd_repeats,
-        train_config=train_cfg,
-    )
+    loo_kwargs: dict[str, Any] = {
+        "data_path": str(paths["full"]),
+        "output_dir": str(run_dir),
+        "device_id": device_id,
+        "seed": seed,
+        "train_with_ctrl": False,
+        "sample_mask_prob": 0.0,
+        "col_msk_threshold": 0.6,
+        "n_wd_mmd_repeats": wd_mmd_repeats,
+        "train_config": train_cfg,
+    }
+    if "workers" in inspect.signature(run_leave_one_out).parameters:
+        loo_kwargs["workers"] = workers
+    summary = run_leave_one_out(**loo_kwargs)
 
     targets = PAPER_TARGETS["table5"]["pbmc_ifn"]
     obs_by_ct_norm = {
@@ -492,6 +578,98 @@ def render_summary_markdown(summary_payload: dict[str, Any]) -> str:
     return "\n".join(lines).strip() + "\n"
 
 
+def _build_child_task_cmd(
+    table: str,
+    dataset_name: str,
+    data_root_path: Path,
+    output_root_path: Path,
+    child_results_dir: Path,
+    device: int,
+    seed: int,
+    vae_epoch: int | None,
+    fm_epoch: int | None,
+    epoch: int | None,
+    batch_size: int | None,
+    max_target_batches: int,
+    table1_eval_split: str,
+    wd_mmd_repeats: int,
+    overwrite_ckpt: bool,
+    cpu_workers: int,
+) -> list[str]:
+    cmd = [
+        sys.executable,
+        str(Path(__file__).resolve()),
+        "--tasks",
+        table,
+        "--datasets",
+        dataset_name,
+        "--data-root",
+        str(data_root_path),
+        "--output-root",
+        str(output_root_path),
+        "--results-dir",
+        str(child_results_dir),
+        "--device",
+        str(device),
+        "--seed",
+        str(seed),
+        "--skip-prepare",
+        "--max-target-batches",
+        str(max_target_batches),
+        "--table1-eval-split",
+        table1_eval_split,
+        "--wd-mmd-repeats",
+        str(wd_mmd_repeats),
+        "--gpu-workers",
+        "1",
+        "--cpu-workers",
+        str(cpu_workers),
+        "--prep-workers",
+        "1",
+    ]
+    if vae_epoch is not None:
+        cmd.extend(["--vae-epoch", str(vae_epoch)])
+    if fm_epoch is not None:
+        cmd.extend(["--fm-epoch", str(fm_epoch)])
+    if epoch is not None:
+        cmd.extend(["--epoch", str(epoch)])
+    if batch_size is not None:
+        cmd.extend(["--batch-size", str(batch_size)])
+    if overwrite_ckpt:
+        cmd.append("--overwrite-ckpt")
+    return cmd
+
+
+def _run_child_task_subprocess(
+    table: str,
+    dataset_name: str,
+    cmd: list[str],
+    log_path: Path,
+    child_results_dir: Path,
+) -> tuple[str, str, dict[str, Any] | None, bool, str]:
+    log_path.parent.mkdir(parents=True, exist_ok=True)
+    child_results_dir.mkdir(parents=True, exist_ok=True)
+    proc = subprocess.run(
+        cmd,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        text=True,
+        check=False,
+    )
+    output_text = proc.stdout or ""
+    log_path.write_text(output_text)
+    if proc.returncode == 0:
+        summary_file = child_results_dir / "iclr2026_summary.json"
+        payload = json.loads(summary_file.read_text())
+        return table, dataset_name, payload["runs"][table][dataset_name], False, output_text
+    if _is_oom_output(output_text):
+        return table, dataset_name, None, True, output_text
+    tail = "\n".join(output_text.splitlines()[-30:])
+    raise RuntimeError(
+        f"Parallel task {table}/{dataset_name} failed (exit={proc.returncode}, log={log_path}):\n{tail}"
+    )
+
+
 def run_reproduction(
     tasks: str | Sequence[str] = "all",
     datasets: str | Sequence[str] | None = None,
@@ -512,6 +690,9 @@ def run_reproduction(
     wd_mmd_repeats: int = 10,
     overwrite_ckpt: bool = False,
     dry_run: bool = False,
+    gpu_workers: int | str = "1",
+    cpu_workers: int | str = "auto",
+    prep_workers: int | str = 4,
 ) -> dict[str, Any]:
     """Orchestrate dataset prep -> training/inference -> evaluation -> summary comparison."""
     plan = resolve_selected_plan(tasks=tasks, datasets=datasets)
@@ -528,12 +709,16 @@ def run_reproduction(
     eff_fm_epoch = fm_epoch if fm_epoch is not None else (epoch if epoch is not None else 200)
     eff_single_epoch = epoch if epoch is not None else 200
     eff_batch_size = batch_size if batch_size is not None else 1024
+    eff_cpu_workers = resolve_cpu_workers(cpu_workers)
+    eff_gpu_workers = resolve_gpu_workers(gpu_workers, device_id=device, plan=plan)
 
     runs: dict[str, dict[str, Any]] = {}
-    for table, dataset_name in plan:
+    for table, _ in plan:
         runs.setdefault(table, {})
-        expected_paths = get_output_paths(dataset_name, data_root_path)
-        if dry_run:
+
+    if dry_run:
+        for table, dataset_name in plan:
+            expected_paths = get_output_paths(dataset_name, data_root_path)
             runs[table][dataset_name] = {
                 "status": "planned",
                 "expected_paths": {k: str(v) for k, v in expected_paths.items()},
@@ -541,44 +726,54 @@ def run_reproduction(
                 "target": PAPER_TARGETS[table][dataset_name],
                 "delta": {},
             }
-            continue
-
-        paths = _ensure_dataset_prepared(
-            dataset_name=dataset_name,
+    else:
+        paths_by_dataset = _ensure_all_datasets_prepared(
+            plan=plan,
             data_root=data_root_path,
             skip_prepare=skip_prepare,
             force_prepare=force_prepare,
             subset_cells=subset_cells,
+            prep_workers=prep_workers,
         )
 
-        if table in {"table1", "table2", "table3"}:
-            runs[table][dataset_name] = _run_cond_gen_and_eval(
-                table=table,
-                dataset_name=dataset_name,
-                paths=paths,
-                output_root=output_root_path,
-                device_id=device,
-                seed=seed,
-                vae_epoch=eff_vae_epoch,
-                fm_epoch=eff_fm_epoch,
-                batch_size=eff_batch_size,
-                table1_eval_split=table1_eval_split,
-                overwrite_ckpt=overwrite_ckpt,
-            )
-        elif table == "table4":
-            runs[table][dataset_name] = _run_table4_bec(
-                dataset_name=dataset_name,
-                paths=paths,
-                output_root=output_root_path,
-                device_id=device,
-                seed=seed,
-                epoch=eff_single_epoch,
-                batch_size=eff_batch_size,
-                max_target_batches=max_target_batches,
-                overwrite_ckpt=overwrite_ckpt,
-            )
-        elif table == "table5":
-            runs[table][dataset_name] = _run_table5_perturb(
+        def _run_serial_task(table: str, dataset_name: str) -> dict[str, Any]:
+            paths = paths_by_dataset[dataset_name]
+            if table in {"table1", "table2", "table3"}:
+                return _run_cond_gen_and_eval(
+                    table=table,
+                    dataset_name=dataset_name,
+                    paths=paths,
+                    output_root=output_root_path,
+                    device_id=device,
+                    seed=seed,
+                    vae_epoch=eff_vae_epoch,
+                    fm_epoch=eff_fm_epoch,
+                    batch_size=eff_batch_size,
+                    table1_eval_split=table1_eval_split,
+                    overwrite_ckpt=overwrite_ckpt,
+                    eval_workers=eff_cpu_workers,
+                )
+            if table == "table4":
+                return _run_table4_bec(
+                    dataset_name=dataset_name,
+                    paths=paths,
+                    output_root=output_root_path,
+                    device_id=device,
+                    seed=seed,
+                    epoch=eff_single_epoch,
+                    batch_size=eff_batch_size,
+                    max_target_batches=max_target_batches,
+                    overwrite_ckpt=overwrite_ckpt,
+                    scib_workers=eff_cpu_workers,
+                )
+            if len(plan) == 1:
+                if isinstance(gpu_workers, str) and gpu_workers.strip().lower() == "auto":
+                    perturb_workers: int | str = "auto"
+                else:
+                    perturb_workers = eff_gpu_workers
+            else:
+                perturb_workers = 1
+            return _run_table5_perturb(
                 dataset_name=dataset_name,
                 paths=paths,
                 output_root=output_root_path,
@@ -587,7 +782,71 @@ def run_reproduction(
                 epoch=eff_single_epoch,
                 batch_size=eff_batch_size,
                 wd_mmd_repeats=wd_mmd_repeats,
+                workers=perturb_workers,
             )
+
+        if eff_gpu_workers > 1 and len(plan) > 1:
+            logs_dir = output_root_path / "logs"
+            tmp_results_root = output_root_path / "tmp_results"
+            oom_retries: list[tuple[str, str]] = []
+            task_results: dict[tuple[str, str], dict[str, Any]] = {}
+
+            with ThreadPoolExecutor(max_workers=min(eff_gpu_workers, len(plan))) as executor:
+                futures = []
+                for table, dataset_name in plan:
+                    tag = f"{table}_{dataset_name}"
+                    log_path = logs_dir / f"{tag}.log"
+                    child_res_dir = tmp_results_root / tag
+                    cmd = _build_child_task_cmd(
+                        table=table,
+                        dataset_name=dataset_name,
+                        data_root_path=data_root_path,
+                        output_root_path=output_root_path,
+                        child_results_dir=child_res_dir,
+                        device=device,
+                        seed=seed,
+                        vae_epoch=vae_epoch,
+                        fm_epoch=fm_epoch,
+                        epoch=epoch,
+                        batch_size=batch_size,
+                        max_target_batches=max_target_batches,
+                        table1_eval_split=table1_eval_split,
+                        wd_mmd_repeats=wd_mmd_repeats,
+                        overwrite_ckpt=overwrite_ckpt,
+                        cpu_workers=eff_cpu_workers,
+                    )
+                    futures.append(
+                        executor.submit(
+                            _run_child_task_subprocess,
+                            table,
+                            dataset_name,
+                            cmd,
+                            log_path,
+                            child_res_dir,
+                        )
+                    )
+
+                for fut in futures:
+                    table, dataset_name, entry, is_oom, _ = fut.result()
+                    if is_oom:
+                        print(
+                            f"[reproduce] {table}/{dataset_name} hit CUDA OOM in parallel; queuing serial retry"
+                        )
+                        oom_retries.append((table, dataset_name))
+                    elif entry is not None:
+                        task_results[(table, dataset_name)] = entry
+
+            if oom_retries:
+                if device >= 0 and torch.cuda.is_available():
+                    torch.cuda.empty_cache()
+                for table, dataset_name in oom_retries:
+                    task_results[(table, dataset_name)] = _run_serial_task(table, dataset_name)
+
+            for table, dataset_name in plan:
+                runs[table][dataset_name] = task_results[(table, dataset_name)]
+        else:
+            for table, dataset_name in plan:
+                runs[table][dataset_name] = _run_serial_task(table, dataset_name)
 
     summary_payload = {
         "metadata": {
@@ -604,6 +863,9 @@ def run_reproduction(
             "fm_epoch": eff_fm_epoch,
             "epoch": eff_single_epoch,
             "batch_size": eff_batch_size,
+            "gpu_workers": eff_gpu_workers,
+            "cpu_workers": eff_cpu_workers,
+            "prep_workers": prep_workers,
         },
         "paper_targets": PAPER_TARGETS,
         "runs": runs,
@@ -663,6 +925,24 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--wd-mmd-repeats", type=int, default=10)
     parser.add_argument("--overwrite-ckpt", action="store_true")
     parser.add_argument("--dry-run", action="store_true")
+    parser.add_argument(
+        "--gpu-workers",
+        type=str,
+        default="1",
+        help="Parallel GPU tasks ('auto' saturates >=40/75 GB GPUs, or integer >=1; default '1').",
+    )
+    parser.add_argument(
+        "--cpu-workers",
+        type=str,
+        default="auto",
+        help="CPU worker count for scIB and distribution evaluation ('auto' or integer; default 'auto').",
+    )
+    parser.add_argument(
+        "--prep-workers",
+        type=int,
+        default=4,
+        help="Concurrent workers passed to prepare_datasets upfront (default 4).",
+    )
     return parser
 
 
@@ -688,6 +968,9 @@ def main():
         wd_mmd_repeats=args.wd_mmd_repeats,
         overwrite_ckpt=args.overwrite_ckpt,
         dry_run=args.dry_run,
+        gpu_workers=args.gpu_workers,
+        cpu_workers=args.cpu_workers,
+        prep_workers=args.prep_workers,
     )
     print(f"Summary JSON: {res['summary_json_path']}")
     print(f"Summary MD:   {res['summary_md_path']}")

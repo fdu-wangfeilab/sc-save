@@ -41,13 +41,16 @@ This guide documents how to reproduce all five quantitative benchmarks (Tables 1
 | Environment | GPU / VRAM | System RAM | Expected Runtime | Notes |
 | :--- | :--- | :--- | :--- | :--- |
 | **Paper Reference** | NVIDIA RTX 3090 (24 GB) | 64 GB+ | ~12.5 min per run on Heart ($K=3200, L=6$) | $191\times$ speedup over $K=1$ naive attention (2391.2 min) |
-| **Google Colab Pro+ (Recommended)** | NVIDIA H100 (80 GB) or A100 (40/80 GB) | High-RAM (51–167 GB) | ~5–15 min per dataset; ~1.5–3 hours for full Tables 1–5 | Checkpoint caching supported via Drive or local disk |
-| **Local Workstation** | CUDA GPU ($\ge$ 16 GB VRAM) | 32 GB+ (64 GB recommended for Lung Cancer) | Comparable to RTX 3090 | Use `--device 0` (or `cpu` only for synthetic/smoke tests) |
+| **Google Colab Pro+ (Recommended)** | NVIDIA G4 (96 GB), H100 (80 GB), or A100 (40/80 GB) | High-RAM (51–167 GB) | ~1–4 min per dataset; full Tables 1–5 parallelized via `--gpu-workers auto` | TF32, SDPA, `bfloat16` FM autocast, GPU-resident batching, precomputed VAE latents, & Drive cache |
+| **Local Workstation** | CUDA GPU ($\ge$ 16 GB VRAM) | 32 GB+ (64 GB recommended for Lung Cancer) | Comparable or faster than RTX 3090 | Use `--device 0 --gpu-workers auto --cpu-workers auto` |
 
-### Software Notes
+### Software & Acceleration Notes
 
 - **Python**: 3.10+ (Colab default Python 3.10/3.11+ supported; local `uv` environment pinned to `3.10.16`).
 - **PyTorch**: Preserve Colab's preinstalled CUDA-enabled PyTorch (do not downgrade PyTorch when installing `sc-save`). Checkpoint loading supports PyTorch 2.6+ (`weights_only=False` where full objects/scalers are loaded).
+- **GPU & CPU Acceleration (100% Paper Parity)**:
+  - **VAE & FM**: CUDA TF32, PyTorch `F.scaled_dot_product_attention`, GPU-resident mini-batching (with FP32 BCE/KL), `bfloat16` Flow Matching autocast, and precomputed frozen VAE `(mu, var)` latents.
+  - **Parallel Execution**: Concurrent dataset download/OT preparation (`--workers` / `--prep-workers`), multi-process GPU task scheduling with automatic serial OOM fallback (`--gpu-workers auto`), and parallel `scib` / WD+MMD evaluation (`--cpu-workers auto`, `--scib-workers`).
 - **`flash-attn`**: Not required (`is_flash_attn=False` in all released configurations).
 
 ---
@@ -58,7 +61,9 @@ This guide documents how to reproduce all five quantitative benchmarks (Tables 1
 
 All benchmarks follow the standard single-cell preprocessing and semantic Gene Block Construction pipeline:
 
-1. **Expression Normalization**: Counts normalized to $10^4$ per cell (`scanpy.pp.normalize_total(target_sum=1e4)`) followed by `log1p`.
+1. **Expression Normalization**:
+   - **Tables 1, 3, 4 (BEC), & 5**: Counts normalized to $10^4$ per cell (`scanpy.pp.normalize_total(target_sum=1e4)`) followed by `log1p`.
+   - **Table 2 (Dual-Condition `heart`, `pbmc`, `lung_atlas`)**: Preserves raw `layers["counts"]` and applies `scanpy.pp.log1p` directly without `normalize_total(1e4)` library-size scaling, matching `iclr-ver` (`ot_split_with_pad.ipynb`).
 2. **Gene Embeddings**: Semantic 1,536-dimensional gene embeddings from GenePT (`GenePT_gene_protein_embedding_model_3_text.pickle` inside `GenePT_emebdding_v2.zip`, Zenodo record `10833191`).
 3. **Optimal Transport Gene Block Partitioning**:
    - Filter to genes covered by GenePT embeddings and select HVGs so total genes $G$ is divisible by block size $K$ (or pad remainder with `pad_*` columns when retaining full gene sets at $K=3200$).
@@ -92,19 +97,20 @@ Inspect all registered datasets, URLs, and expected output paths:
 python examples/prepare_datasets.py --list-datasets
 ```
 
-Prepare all datasets for Tables 1–5 (plus GenePT embeddings):
+Prepare all datasets for Tables 1–5 (plus GenePT embeddings) using concurrent deduplicated downloads and parallel OT partitioning:
 
 ```bash
 python examples/prepare_datasets.py \
   --datasets all \
   --data-root ./data \
+  --workers auto \
   --ot-num-iter-max 1000000
 ```
 
 Or prepare by table group / dataset name (`table1`..`table5`, or e.g. `heart pbmc lung_atlas`):
 
 ```bash
-python examples/prepare_datasets.py --datasets table2 --data-root ./data
+python examples/prepare_datasets.py --datasets table2 --data-root ./data --workers 4
 ```
 
 Processed `.h5ad` outputs written under `<data-root>/processed/` (alongside `<data-root>/manifest.json`):
@@ -153,13 +159,14 @@ All primary benchmarks use the unified `SAVE-B` / `SAVE-B-perturb` configuration
 
 ## 5. Option A: One-Click Google Colab Reproduction (Recommended)
 
-Launch [`notebooks/SAVE_ICLR2026_Reproduce_Colab.ipynb`](notebooks/SAVE_ICLR2026_Reproduce_Colab.ipynb) in Google Colab Pro+ with an **H100** or **A100** High-RAM runtime:
+Launch [`notebooks/SAVE_ICLR2026_Reproduce_Colab.ipynb`](notebooks/SAVE_ICLR2026_Reproduce_Colab.ipynb) in Google Colab Pro+ with a **G4 (96 GB)**, **H100 (80 GB)**, or **A100 (40/80 GB)** High-RAM runtime:
 
 1. **Cell 1**: Verify GPU & CUDA PyTorch environment and install `sc-save` dependencies without downgrading Colab's PyTorch.
-2. **Cell 2**: Clone `fdu-wangfeilab/sc-save` (`reproduce-iclr2026` branch) and optionally enable Google Drive caching (`USE_GOOGLE_DRIVE = False` by default).
-3. **Cell 3**: Download & preprocess datasets + GenePT embeddings.
-4. **Cells 4–8**: Run Tables 2, 1, 3, 4, and 5 sequentially or selectively by table, printing live comparison against paper targets.
-5. **Cell 9**: Aggregate all reproduced metrics into a consolidated Paper vs. Colab table and export `iclr2026_colab_repro.json`.
+2. **Cell 2**: Clone (or `git pull --ff-only` if present) `fdu-wangfeilab/sc-save` (`reproduce-iclr2026` branch), set parallel defaults (`PREP_WORKERS = 4`, `GPU_WORKERS = "auto"`, `CPU_WORKERS = "auto"`), and optionally enable Google Drive caching (`USE_GOOGLE_DRIVE = False` by default).
+3. **Cell 3**: Download & preprocess datasets + GenePT embeddings concurrently via `--workers <PREP_WORKERS>`.
+4. **Fast Parallel All-Tables Runner (Optional)**: Set `RUN_ALL_PARALLEL = True` to run **all 5 tables concurrently** (`--tasks all --gpu-workers auto --cpu-workers auto --prep-workers 4`), then jump directly to Cell 9.
+5. **Cells 4–8**: Or run Tables 2, 1, 3, 4, and 5 individually or selectively (also using `GPU_WORKERS = "auto"` and `CPU_WORKERS = "auto"`), printing live comparison against paper targets.
+6. **Cell 9**: Aggregate all reproduced metrics into a consolidated Paper vs. Colab table and export `iclr2026_colab_repro.json`.
 
 ---
 
@@ -194,7 +201,7 @@ Preview the execution plan and expected output file paths without downloading or
 python examples/reproduce_iclr2026.py --tasks all --data-root ./data --output-root ./outputs/iclr2026 --dry-run
 ```
 
-Run **all 5 tables** end-to-end (automatically downloads/prepares any missing datasets, trains/loads checkpoints, evaluates metrics, and writes `<output-root>/results/iclr2026_summary.{json,md}`):
+Run **all 5 tables** end-to-end with full GPU & CPU parallelism (automatically downloads/prepares datasets concurrently, schedules parallel GPU subprocesses with automatic serial OOM fallback, evaluates metrics, and writes `<output-root>/results/iclr2026_summary.{json,md}` and per-task logs under `<output-root>/logs/`):
 
 ```bash
 python examples/reproduce_iclr2026.py \
@@ -202,29 +209,35 @@ python examples/reproduce_iclr2026.py \
   --data-root ./data \
   --output-root ./outputs/iclr2026 \
   --device 0 \
-  --seed 1202
+  --seed 1202 \
+  --gpu-workers auto \
+  --cpu-workers auto \
+  --prep-workers 4
 ```
 
 Or run individual tables selectively (using distinct `--results-dir` paths if you want per-table summary files):
 
 ```bash
 # Table 1: Single-Condition Generation (PBMC3K, Dentate gyrus, Tabula Muris)
-python examples/reproduce_iclr2026.py --tasks table1 --data-root ./data --output-root ./outputs/iclr2026 --results-dir ./outputs/iclr2026/results/table1 --device 0
+python examples/reproduce_iclr2026.py --tasks table1 --data-root ./data --output-root ./outputs/iclr2026 --results-dir ./outputs/iclr2026/results/table1 --gpu-workers auto --cpu-workers auto --device 0
 
 # Table 2: Dual-Condition Generation (Heart, PBMC, Lung Atlas)
-python examples/reproduce_iclr2026.py --tasks table2 --data-root ./data --output-root ./outputs/iclr2026 --results-dir ./outputs/iclr2026/results/table2 --device 0
+python examples/reproduce_iclr2026.py --tasks table2 --data-root ./data --output-root ./outputs/iclr2026 --results-dir ./outputs/iclr2026/results/table2 --gpu-workers auto --cpu-workers auto --device 0
 
 # Table 3: Multi-Condition Generation (Lung Cancer Seen & Unseen 13, 24)
-python examples/reproduce_iclr2026.py --tasks table3 --data-root ./data --output-root ./outputs/iclr2026 --results-dir ./outputs/iclr2026/results/table3 --device 0
+python examples/reproduce_iclr2026.py --tasks table3 --data-root ./data --output-root ./outputs/iclr2026 --results-dir ./outputs/iclr2026/results/table3 --cpu-workers auto --device 0
 
 # Table 4: Batch Effect Correction (Lung Atlas, Heart, PBMC + scIB)
-python examples/reproduce_iclr2026.py --tasks table4 --data-root ./data --output-root ./outputs/iclr2026 --results-dir ./outputs/iclr2026/results/table4 --device 0
+python examples/reproduce_iclr2026.py --tasks table4 --data-root ./data --output-root ./outputs/iclr2026 --results-dir ./outputs/iclr2026/results/table4 --gpu-workers auto --cpu-workers auto --device 0
 
 # Table 5: Leave-One-Out Perturbation Prediction (PBMC-IFN, 7 cell types)
-python examples/reproduce_iclr2026.py --tasks table5 --data-root ./data --output-root ./outputs/iclr2026 --results-dir ./outputs/iclr2026/results/table5 --device 0
+python examples/reproduce_iclr2026.py --tasks table5 --data-root ./data --output-root ./outputs/iclr2026 --results-dir ./outputs/iclr2026/results/table5 --gpu-workers auto --device 0
 ```
 
 Useful flags:
+- `--gpu-workers <auto|int>`: Parallel GPU child processes (`"auto"` runs 4–6 concurrent jobs on $\ge$75 GB VRAM G4/H100, 2 on $\ge$36 GB A100, or up to 7 LOO folds on single-dataset `table5`; defaults to `"1"` for serial compatibility).
+- `--cpu-workers <auto|int>`: Concurrent CPU workers for `scib` and WD/MMD distribution evaluation (`"auto"` -> `min(8, os.cpu_count() or 1)`).
+- `--prep-workers <int>`: Upfront dataset download & OT workers passed to `prepare_datasets` (default `4`).
 - `--skip-prepare`: Assert that datasets under `--data-root/processed/` are already prepared.
 - `--datasets pbmc3k,heart`: Restrict execution to specific datasets.
 - `--subset-cells 512 --vae-epoch 1 --fm-epoch 1 --epoch 1`: Fast end-to-end smoke check.
@@ -257,12 +270,14 @@ python examples/bec_integration/run_bec.py \
   --data-path ./data/processed/table4_bec/lung_atlas_hvg2000_GBS400.h5ad \
   --task-name lung_atlas_bec \
   --output-dir ./outputs/iclr2026/table4/lung_atlas_bec \
+  --scib-workers 8 \
   --device 0
 
 # Perturbation Prediction LOO (Table 5)
 python examples/perturbation_prediction/run_leave_one_out.py \
   --data-path ./data/processed/table5_perturb/pbmc_ifn_hvg2000_GBS400.h5ad \
   --output-dir ./outputs/iclr2026/table5/pbmc_ifn \
+  --workers auto \
   --device 0
 ```
 
