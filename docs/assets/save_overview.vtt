@@ -1,0 +1,89 @@
+WEBVTT
+
+1
+00:00:00.333 --> 00:00:06.433
+scRNA-seq profiles ~20,000 unordered genes per cell.
+
+2
+00:00:06.433 --> 00:00:12.867
+Standard Transformers hit an O(G²) wall (~40 h on one GPU).
+
+3
+00:00:12.867 --> 00:00:20.500
+Meet SAVE (ICLR 2026): LLM-guided Gene Blocks + Latent Flow Matching.
+
+4
+00:00:21.400 --> 00:00:26.567
+Unlike 2D image grids, genes form an unordered, sparse set.
+
+5
+00:00:26.567 --> 00:00:37.467
+SAVE encodes NCBI Gene summaries into 1,536-dim GenePT LLM embeddings.
+
+6
+00:00:37.467 --> 00:00:44.667
+Balanced Optimal Transport soft-patches genes into pathway-coherent Gene Blocks.
+
+7
+00:00:45.567 --> 00:00:53.033
+A Gene-Block Attention VAE compresses blocks into pathway-structured latents.
+
+8
+00:00:53.033 --> 00:01:03.900
+DiT Conditional OT Flow Matching: AdaLN, condition masking (p = 0.6) & CFG.
+
+9
+00:01:03.900 --> 00:01:08.033
+Generates accurate multi-condition cell states in just 20 ODE steps.
+
+10
+00:01:08.933 --> 00:01:16.767
+Grouping 19,112 genes into L = 6 blocks collapses attention from O(G²) to O(L²).
+
+11
+00:01:16.767 --> 00:01:24.967
+Single-RTX-3090 training drops from 2,391.2 min to 12.5 min (191× speedup).
+
+12
+00:01:24.967 --> 00:01:31.267
+Reaching 266× at K = 5,600 (9.0 min), and ~7 min per run on Colab G4.
+
+13
+00:01:32.167 --> 00:01:38.200
+With one fixed configuration, SAVE achieves strong gains across 8 benchmarks.
+
+14
+00:01:38.200 --> 00:01:44.433
+SOTA dual-condition generation on Heart (WD 8.30), PBMC (5.37) & Lung Atlas (4.37).
+
+15
+00:01:44.433 --> 00:01:49.767
+Reliable zero-shot extrapolation to unseen 5-covariate Lung Cancer combinations.
+
+16
+00:01:50.667 --> 00:01:57.800
+Zero task-specific objectives: up to 0.83 scIB in batch effect correction.
+
+17
+00:01:57.800 --> 00:02:02.867
+0.96 avg PCC / 0.86 R² on leave-one-out PBMC IFN-β perturbation prediction.
+
+18
+00:02:02.867 --> 00:02:11.867
+Attention recovers fatty acid β-oxidation in cardiomyocytes & filters noise.
+
+19
+00:02:12.767 --> 00:02:16.100
+Everything is engineered for verified one-click reproduction.
+
+20
+00:02:16.100 --> 00:02:25.167
+Launch Colab or run 1 CLI command to reproduce Tables 1–5 (11 datasets).
+
+21
+00:02:25.167 --> 00:02:29.100
+Backed by verified Colab Pro+ G4 logs (88m 15s parallel Tables 1–4).
+
+22
+00:02:30.000 --> 00:02:36.433
+Explore paper, code & Colab at save.argonx.dev

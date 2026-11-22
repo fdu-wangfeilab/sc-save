@@ -121,4 +121,62 @@
     if (topSection) observer.observe(topSection);
     observedSections.forEach(({ section }) => observer.observe(section));
   }
+
+  // Video chapter seek & active-chapter sync
+  const video = document.getElementById('save-overview-video');
+  const chapterButtons = Array.from(
+    document.querySelectorAll('.video-chapter-btn[data-seek]')
+  );
+
+  if (video && chapterButtons.length > 0) {
+    const chapters = chapterButtons
+      .map((btn) => ({
+        btn,
+        seek: Number.parseFloat(btn.getAttribute('data-seek') || '0'),
+      }))
+      .sort((a, b) => a.seek - b.seek);
+
+    const setActiveChapter = (activeBtn) => {
+      chapterButtons.forEach((btn) => {
+        btn.setAttribute('aria-pressed', btn === activeBtn ? 'true' : 'false');
+      });
+    };
+
+    const seekTo = (seconds) => {
+      const applySeek = () => {
+        video.currentTime = seconds;
+        const playPromise = video.play();
+        if (playPromise && typeof playPromise.catch === 'function') {
+          playPromise.catch(() => {});
+        }
+      };
+
+      if (video.readyState >= 1) {
+        applySeek();
+      } else {
+        video.addEventListener('loadedmetadata', applySeek, { once: true });
+        video.load();
+      }
+    };
+
+    chapters.forEach(({ btn, seek }) => {
+      btn.addEventListener('click', () => {
+        setActiveChapter(btn);
+        seekTo(seek);
+      });
+    });
+
+    video.addEventListener('timeupdate', () => {
+      const now = video.currentTime;
+      let current = chapters[0];
+      for (const ch of chapters) {
+        if (now + 0.15 >= ch.seek) {
+          current = ch;
+        }
+      }
+      if (current) {
+        setActiveChapter(current.btn);
+      }
+    });
+  }
 })();
