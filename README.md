@@ -9,6 +9,7 @@
 </p>
 
 <p>
+  <a href="https://save.argonx.dev"><img src="https://img.shields.io/badge/Project_Page-save.argonx.dev-245D50?style=flat-square&labelColor=0D1117" alt="Project Page" /></a>
   <a href="https://colab.research.google.com/github/fdu-wangfeilab/sc-save/blob/main/notebooks/SAVE_ICLR2026_Reproduce_Colab.ipynb"><img src="https://colab.research.google.com/assets/colab-badge.svg" alt="Open In Colab" /></a>
   <a href="https://openreview.net/forum?id=l7QEoK4uDP"><img src="https://img.shields.io/badge/ICLR_2026-OpenReview-0F766E?style=flat-square&labelColor=0D1117" alt="ICLR 2026 OpenReview" /></a>
   <a href="https://arxiv.org/abs/2604.16776"><img src="https://img.shields.io/badge/arXiv-2604.16776-10B981?style=flat-square&labelColor=0D1117&logo=arxiv&logoColor=white" alt="arXiv 2604.16776" /></a>
@@ -19,6 +20,7 @@
 
 <p>
   <a href="#overview">Overview</a> &middot;
+  <a href="#llm-semantic-gene-blocks-vs-vit-patchify">LLM Blocks vs. ViT</a> &middot;
   <a href="#key-results">Key Results</a> &middot;
   <a href="#iclr-2026-reproduction-quickstart">Reproduce ICLR 2026</a> &middot;
   <a href="#biological-interpretability">Interpretability</a> &middot;
@@ -33,18 +35,40 @@
 
 ## Overview
 
-**SAVE** is a unified conditional generative framework for multi-condition single-cell RNA-seq modeling. Instead of attending over ~20,000 flat gene tokens, SAVE groups semantically related genes into balanced **Gene Blocks** and combines a latent Variational Autoencoder with masked **Optimal-Transport Flow Matching** to model complex biological and technical covariates within a single architecture.
+**SAVE** is a unified conditional generative framework for multi-condition single-cell RNA-seq modeling built around three core pillars: **LLM biological knowledge**, a **Latent Flow Matching tech stack**, and **191× training efficiency**:
 
-- **Gene Block Attention (191× Speedup):** Partitions LLM-embedded NCBI gene summaries into $L$ balanced functional blocks of size $K = 3200$ via Optimal Transport clustering, reducing Transformer complexity from $\mathcal{O}(G^2)$ to $\mathcal{O}(L^2)$ (12.5 min vs. 2391.2 min on a single RTX 3090 24GB).
-- **Masked Condition Modeling & Multi-Condition CFG:** Injects arbitrary biological/technical covariates via Adaptive Layer Normalization (`AdaLN`) with independent condition masking ($p = 0.6$) and multi-condition Classifier-Free Guidance, enabling zero-shot extrapolation to **unseen condition combinations** across 1–5 covariates.
-- **Unified SOTA Performance:** Using one fixed configuration across **8 benchmarks**, SAVE achieves state-of-the-art results on **conditional generation**, **batch effect correction** (without task-specific training), and **out-of-sample perturbation prediction**, while yielding biologically interpretable pathway-level attention maps.
+- **LLM Biological Knowledge (Semantic Gene Embeddings → OT Gene Blocks):** Unlike vision pixels on a regular 2D grid, genes form an unordered, sparse set. SAVE encodes curated **NCBI Gene** functional summaries using a pre-trained LLM (GenePT, 1,536-dimensional semantic embeddings) and solves iterative **Optimal Transport** clustering to partition ~20,000 genes into $L$ balanced, pathway-coherent **Gene Blocks** ($K = 3200$).
+- **Latent Flow Matching Tech Stack (Gene-Block VAE + DiT OT-FM):** Compresses structured gene blocks ($X \in \mathbb{R}^{N \times L \times K}$) into a compact biological latent space ($z \in \mathbb{R}^{N \times L \times d}$) via a Gene-Block Attention VAE, then trains a **DiT-based Conditional Optimal-Transport Flow Matching** model (`AdaLN`, independent condition masking $p = 0.6$, multi-condition Classifier-Free Guidance) in latent space—unifying 1–5 condition generation (including unseen combinations), zero-shot batch correction, and out-of-sample perturbation prediction across **8 benchmarks** with one fixed configuration.
+- **Ultra-High Efficiency (191× Speedup & 20-Step ODE Sampling):** Grouping $G \approx 19{,}112$ flat genes into $L = 6$ semantic blocks collapses self-attention complexity from $\mathcal{O}(G^2)$ to $\mathcal{O}(L^2)$, cutting single-RTX-3090 (24 GB) training time from **2,391.2 min (~40 h)** down to **12.5 min (191× speedup; 266× / 9.0 min at $K=5600$)**—and **~7 min** per run on Colab G4 with SDPA/TF32/`bfloat16` FM and 20-step sampling—while learning biologically interpretable pathway attention.
 
 <p align="center">
   <img src="docs/assets/framework.png" width="96%" alt="SAVE Architecture Overview" />
 </p>
 <p align="center">
-  <em><strong>Figure 1. Overview of SAVE.</strong> (Left) Semantic gene summaries are clustered via Optimal Transport into balanced gene blocks and reshaped into structured tensors. (Bottom) A Gene Block Attention VAE compresses profiles into latent space. (Top) Conditional Flow Matching with AdaLN and condition masking models multi-condition trajectories for generation, integration, and perturbation transfer.</em>
+  <em><strong>Figure 1. Overview of SAVE.</strong> (Left) LLM-embedded NCBI gene summaries are clustered via Optimal Transport into balanced gene blocks ($X \in \mathbb{R}^{N \times L \times K}$). (Bottom) A Gene-Block Attention VAE compresses profiles into pathway-structured latents $z \in \mathbb{R}^{N \times L \times d}$. (Top) Latent Conditional Optimal-Transport Flow Matching with AdaLN and condition masking generates unseen multi-condition cell states, corrects batch effects, and transfers perturbations.</em>
 </p>
+
+### LLM Semantic Gene Blocks vs. ViT Patchify
+
+Standard Transformer models either attend over ~20,000 flat genes ($\mathcal{O}(G^2)$ memory/time bottleneck) or lack a spatial 2D neighborhood for Vision Transformer (ViT) grid patching. SAVE replaces spatial proximity with **LLM semantic similarity + balanced Optimal Transport soft-patching** before feeding structured tokens into the **Latent VAE + Latent Flow Matching** stack:
+
+<p align="center">
+  <img src="docs/assets/geneblock_vs_vit.png" width="96%" alt="ViT Patchify vs. SAVE LLM-Guided Gene Block Mechanism" />
+</p>
+<p align="center">
+  <em><strong>Figure 2. ViT Patchify (Vision) vs. SAVE Gene Block Mechanism (Genomics).</strong> Instead of hard-patching a structured 2D pixel grid by Euclidean proximity, SAVE extracts 1,536-dim LLM semantic embeddings from NCBI gene summaries (Stage 1) and performs balanced Optimal Transport clustering (Stage 2) to form pathway-coupled Gene Blocks for downstream Latent VAE compression and Latent Flow Matching.</em>
+</p>
+
+1. **Stage 1 — LLM Semantic Embedding:** Curated NCBI Gene text descriptions are encoded with a pre-trained LLM (`text-embedding-ada-002`, GenePT) into continuous 1,536-dim semantic vectors $g_i$, injecting prior biological functional knowledge directly into tokenization.
+2. **Stage 2 — Balanced Optimal Transport Soft-Patching → Latent FM:** Iterative Optimal Transport minimizes squared Euclidean cost $C_{ij} = \|g_i - c_j^{(t)}\|_2^2$ under uniform marginal constraints ($T\mathbf{1}_L = a,\ T^\top \mathbf{1}_G = b$), yielding non-overlapping, equal-size functional blocks $X \in \mathbb{R}^{N \times L \times K}$ that serve as compact tokens for **Latent VAE + OT Flow Matching**.
+
+| Dimension | ViT Patchify (Vision Domain) | SAVE Gene Block Mechanism (Genomics Domain) |
+| :--- | :--- | :--- |
+| **Input Data Structure** | Structured 2D pixel grid | Unordered, high-dimensional & sparse gene set (~20,000 genes) |
+| **Grouping Basis** | Physical proximity (Euclidean grid) | **Biological semantic similarity (pre-trained LLM prior on NCBI descriptions)** |
+| **Patching Type** | Hard-patching (fixed spatial grid) | **Semantic soft-patching (iterative balanced Optimal Transport clustering)** |
+| **Token Properties** | Functionally agnostic image patches | **Functionally coupled pathway blocks** (coherent gene programs) |
+| **Downstream Stack & Efficiency** | Flat patch ViT attention | **Latent VAE + Latent OT Flow Matching** ($\mathcal{O}(L^2)$ attention, **191× training speedup**: 12.5 min vs. 2,391.2 min on RTX 3090) |
 
 ---
 
@@ -65,7 +89,7 @@ Quantitative comparison on three multi-platform scRNA-seq datasets (Wasserstein 
   <img src="docs/assets/cond_gen_heart.png" width="94%" alt="Dual-Condition UMAP Visualization on Heart" />
 </p>
 <p align="center">
-  <em><strong>Figure 2. Dual-condition generation on Heart.</strong> Top: generated vs. ground-truth overlap; Middle: sequencing batches; Bottom: cell types. SAVE accurately preserves both multi-batch structure and cell-type topology.</em>
+  <em><strong>Figure 3. Dual-condition generation on Heart.</strong> Top: generated vs. ground-truth overlap; Middle: sequencing batches; Bottom: cell types. SAVE accurately preserves both multi-batch structure and cell-type topology.</em>
 </p>
 
 ---
@@ -84,7 +108,7 @@ Evaluated on the **Lung Cancer** benchmark across 5 simultaneous covariates (`as
   <img src="docs/assets/multi_cond_lung.png" width="96%" alt="5-Condition Generation on Lung Cancer (Seen and Unseen)" />
 </p>
 <p align="center">
-  <em><strong>Figure 3. Five-condition generation on Lung Cancer.</strong> (a) Seen combination (Smart-seq2, 60-year-old, lung adenocarcinoma, stage IV); (b) Unseen held-out combination (Smart-seq2, 70-year-old, squamous cell lung carcinoma, stage I).</em>
+  <em><strong>Figure 4. Five-condition generation on Lung Cancer.</strong> (a) Seen combination (Smart-seq2, 60-year-old, lung adenocarcinoma, stage IV); (b) Unseen held-out combination (Smart-seq2, 70-year-old, squamous cell lung carcinoma, stage I).</em>
 </p>
 
 ---
@@ -107,7 +131,7 @@ Leave-one-cell-type-out counterfactual prediction of IFN-$\beta$ stimulation res
   <img src="docs/assets/perturb_pbmc_ifn.png" width="96%" alt="Perturbation Prediction UMAP and Top DEG Violin Plots" />
 </p>
 <p align="center">
-  <em><strong>Figure 4. Perturbation prediction on PBMC IFN-$\beta$.</strong> Top: UMAP alignment against ground-truth stimulated cells across all 7 held-out cell types; Bottom: predicted expression distributions of key interferon-response markers (<code>ISG15</code>, <code>TNFSF10</code>).</em>
+  <em><strong>Figure 5. Perturbation prediction on PBMC IFN-$\beta$.</strong> Top: UMAP alignment against ground-truth stimulated cells across all 7 held-out cell types; Bottom: predicted expression distributions of key interferon-response markers (<code>ISG15</code>, <code>TNFSF10</code>).</em>
 </p>
 
 ---

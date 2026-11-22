@@ -1,0 +1,3 @@
+User-agent: *
+Allow: /
+Sitemap: https://save.argonx.dev/sitemap.xml

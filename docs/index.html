@@ -1,0 +1,760 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>SAVE · ICLR 2026 — Multi-Condition Single-Cell Generation with Gene Block Attention</title>
+  <meta name="description" content="SAVE (ICLR 2026): A generalizable latent VAE and Optimal-Transport Flow Matching framework for multi-condition single-cell RNA-seq generation, batch effect correction, and perturbation prediction with Gene Block Attention.">
+  <meta name="author" content="Jiahao Li, Jiayi Dong, Peng Ye, Xiaochi Zhou, Haohai Lu, Fei Wang">
+  <meta name="theme-color" content="#f8f9f5">
+  <link rel="canonical" href="https://save.argonx.dev/">
+  <meta property="og:type" content="website">
+  <meta property="og:title" content="SAVE · ICLR 2026 — Multi-Condition Single-Cell Generation with Gene Block Attention">
+  <meta property="og:description" content="191× speedup via Gene Block Attention, zero-shot extrapolation across 1–5 covariates, and unified SOTA performance across 8 benchmarks with verified Google Colab reproduction.">
+  <meta property="og:url" content="https://save.argonx.dev/">
+  <meta property="og:image" content="https://save.argonx.dev/assets/social_preview.png">
+  <meta property="og:image:width" content="1280">
+  <meta property="og:image:height" content="640">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="SAVE · ICLR 2026">
+  <meta name="twitter:description" content="Multi-condition single-cell generation, batch correction, and perturbation prediction with Gene Block Attention.">
+  <meta name="twitter:image" content="https://save.argonx.dev/assets/social_preview.png">
+  <link rel="icon" type="image/svg+xml" href="./favicon.svg">
+  <link rel="stylesheet" href="./fonts/fonts.css">
+  <link rel="stylesheet" href="./styles.css">
+</head>
+<body>
+  <a class="skip-link" href="#main">Skip to content</a>
+
+  <header class="site-header">
+    <div class="site-width header-inner">
+      <a class="brand-mark" href="#top" aria-label="SAVE Project Page">
+        <span class="brand-name">SAVE<span>.</span></span>
+        <span class="brand-venue">ICLR 2026</span>
+      </a>
+      <nav class="site-nav" aria-label="Page sections">
+        <a href="#overview">Overview</a>
+        <a href="#results">Results</a>
+        <a href="#interpretability">Interpretability</a>
+        <a href="#reproduce">Reproduce</a>
+        <a href="#citation">Citation</a>
+        <a class="nav-external" href="https://argonx.dev/">argonx.dev <span aria-hidden="true">↗</span></a>
+      </nav>
+    </div>
+  </header>
+
+  <main id="main">
+    <section id="top" class="hero site-width" aria-labelledby="paper-title">
+      <p class="eyebrow"><span class="accent-line" aria-hidden="true"></span> ICLR 2026 · Fudan University</p>
+      <h1 id="paper-title">SAVE: A Generalizable Framework for Multi-Condition Single-Cell Generation with Gene Block Attention</h1>
+      <p class="hero-authors">
+        <a href="https://argonx.dev/"><strong>Jiahao Li</strong></a>,
+        Jiayi Dong,
+        Peng Ye,
+        Xiaochi Zhou,
+        Haohai Lu,
+        Fei Wang<sup>*</sup>
+      </p>
+      <p class="hero-affiliation">College of Computer Science and Artificial Intelligence, Fudan University &nbsp;·&nbsp; <sup>*</sup>Corresponding author</p>
+
+      <div class="hero-actions">
+        <a class="btn btn-primary" href="https://openreview.net/forum?id=l7QEoK4uDP">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/><path d="M16 13H8"/><path d="M16 17H8"/><path d="M10 9H8"/></svg>
+          OpenReview Paper
+        </a>
+        <a class="btn btn-colab" href="https://colab.research.google.com/github/fdu-wangfeilab/sc-save/blob/main/notebooks/SAVE_ICLR2026_Reproduce_Colab.ipynb">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+          Open in Colab
+        </a>
+        <a class="btn" href="https://arxiv.org/abs/2604.16776">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>
+          arXiv:2604.16776
+        </a>
+        <a class="btn" href="https://github.com/fdu-wangfeilab/sc-save">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M9 19c-5 1.5-5-2.5-7-3m14 6v-3.87a3.37 3.37 0 0 0-.94-2.61c3.14-.35 6.44-1.54 6.44-7A5.44 5.44 0 0 0 20 4.77 5.07 5.07 0 0 0 19.91 1S18.73.65 16 2.48a13.38 13.38 0 0 0-7 0C6.27.65 5.09 1 5.09 1A5.07 5.07 0 0 0 5 4.77a5.44 5.44 0 0 0-1.5 3.78c0 5.42 3.3 6.61 6.44 7A3.37 3.37 0 0 0 9 18.13V22"/></svg>
+          GitHub Code
+        </a>
+        <a class="btn" href="#citation">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M3 21c3 0 7-1 7-8V5c0-1.25-.756-2.017-2-2H4c-1.25 0-2 .75-2 1.972V11c0 1.25.75 2 2 2 1 0 1 0 1 1v1c0 1-1 2-2 2s-1 .008-1 1.031V20c0 1 0 1 1 1z"/><path d="M15 21c3 0 7-1 7-8V5c0-1.25-.757-2.017-2-2h-4c-1.25 0-2 .75-2 1.972V11c0 1.25.75 2 2 2h.75c0 2.25.25 4-2.75 4v3c0 1 0 1 1 1z"/></svg>
+          BibTeX
+        </a>
+      </div>
+
+      <div class="metrics-strip">
+        <article class="metric-card">
+          <div class="metric-value">191×</div>
+          <div class="metric-label">Training Speedup</div>
+          <p class="metric-sub">12.5 min vs. 2,391.2 min on a single RTX 3090 (24 GB)</p>
+        </article>
+        <article class="metric-card">
+          <div class="metric-value">1–5 Covariates</div>
+          <div class="metric-label">Unseen Extrapolation</div>
+          <p class="metric-sub">AdaLN + masked condition modeling (p = 0.6) &amp; multi-condition CFG</p>
+        </article>
+        <article class="metric-card">
+          <div class="metric-value">8 Benchmarks</div>
+          <div class="metric-label">Unified Configuration</div>
+          <p class="metric-sub">Generation, zero-shot batch integration &amp; perturbation prediction</p>
+        </article>
+        <article class="metric-card">
+          <div class="metric-value">Tables 1–5</div>
+          <div class="metric-label">Colab G4 Verified</div>
+          <p class="metric-sub">11 datasets reproduced end-to-end in our public Colab notebook</p>
+        </article>
+      </div>
+    </section>
+
+    <section id="overview" class="section-block site-width" aria-labelledby="overview-title">
+      <div class="section-header">
+        <p class="eyebrow"><span class="accent-line" aria-hidden="true"></span> 01 / Overview &amp; Architecture</p>
+        <h2 id="overview-title">Semantic gene blocks meet masked Optimal-Transport Flow Matching.</h2>
+        <p class="section-lead"><strong>SAVE</strong> is a unified conditional generative framework for multi-condition single-cell RNA-seq modeling. Instead of attending over ~20,000 flat gene tokens, SAVE groups semantically related genes into balanced <strong>Gene Blocks</strong> and pairs a latent Variational Autoencoder with masked <strong>Optimal-Transport Flow Matching</strong> to model complex biological and technical covariates inside a single architecture.</p>
+      </div>
+
+      <div class="pillars-grid">
+        <article class="pillar-card">
+          <div class="pillar-tag">01 / LLM KNOWLEDGE</div>
+          <h3>LLM Biological Knowledge</h3>
+          <p>Encodes curated NCBI Gene functional summaries via GenePT (1,536-dim semantic embeddings) and solves iterative Optimal Transport clustering to partition ~20,000 unordered genes into <em>L</em> balanced, pathway-coherent Gene Blocks (<em>K</em> = 3,200).</p>
+        </article>
+        <article class="pillar-card">
+          <div class="pillar-tag">02 / LATENT FLOW MATCHING</div>
+          <h3>Gene-Block VAE + DiT OT-FM</h3>
+          <p>Compresses structured gene blocks (<em>X</em> ∈ ℝ<sup><em>N</em>×<em>L</em>×<em>K</em></sup>) into pathway-structured latents (<em>z</em> ∈ ℝ<sup><em>N</em>×<em>L</em>×<em>d</em></sup>), then trains DiT-based Conditional OT Flow Matching (<code>AdaLN</code>, condition masking <em>p</em> = 0.6, multi-condition CFG) across 1–5 covariates and 8 benchmarks with one fixed config.</p>
+        </article>
+        <article class="pillar-card">
+          <div class="pillar-tag">03 / EFFICIENCY</div>
+          <h3>191× Speedup &amp; 20-Step Sampling</h3>
+          <p>Grouping <em>G</em> ≈ 19,112 genes into <em>L</em> = 6 blocks collapses attention complexity from <em>O</em>(<em>G</em><sup>2</sup>) to <em>O</em>(<em>L</em><sup>2</sup>), cutting single-RTX-3090 training from 2,391.2 min (~40 h) to 12.5 min (266× / 9.0 min at <em>K</em> = 5,600; ~7 min on Colab G4).</p>
+        </article>
+      </div>
+
+      <figure class="figure-card">
+        <button class="figure-zoom" type="button" data-title="Figure 1 — Overview of SAVE" aria-label="Zoom Figure 1: Overview of SAVE">
+          <img src="./assets/framework.png" alt="SAVE framework overview: Gene Block Construction via Optimal Transport, Gene Block Attention VAE, and Conditional Flow Matching Network with AdaLN" width="1672" height="941">
+          <span class="figure-zoom-hint">Click figure to inspect full resolution ↗</span>
+        </button>
+        <figcaption class="figure-caption"><strong>Figure 1. Overview of SAVE.</strong> <em>Left:</em> LLM-embedded NCBI gene summaries are clustered via Optimal Transport into balanced gene blocks (<em>X</em> ∈ ℝ<sup><em>N</em>×<em>L</em>×<em>K</em></sup>). <em>Bottom:</em> A Gene-Block Attention VAE compresses profiles into pathway-structured latents <em>z</em> ∈ ℝ<sup><em>N</em>×<em>L</em>×<em>d</em></sup>. <em>Top:</em> Latent Conditional Optimal-Transport Flow Matching with AdaLN and condition masking generates unseen multi-condition cell states, corrects batch effects, and transfers perturbations.</figcaption>
+      </figure>
+
+      <div id="gene-blocks" class="subsection-block">
+        <h3>LLM Semantic Gene Blocks vs. ViT Patchify</h3>
+        <p class="result-note">Standard Transformer models either attend over ~20,000 flat genes (<em>O</em>(<em>G</em><sup>2</sup>) memory/time bottleneck) or lack a spatial 2D neighborhood for Vision Transformer (ViT) grid patching. SAVE replaces spatial proximity with <strong>LLM semantic similarity + balanced Optimal Transport soft-patching</strong> before feeding structured tokens into the <strong>Latent VAE + Latent Flow Matching</strong> stack.</p>
+
+        <figure class="figure-card">
+          <button class="figure-zoom" type="button" data-title="Figure 2 — ViT Patchify vs. SAVE Gene Block Mechanism" aria-label="Zoom Figure 2: ViT Patchify vs. SAVE Gene Block Mechanism">
+            <img src="./assets/geneblock_vs_vit.png" alt="ViT Patchify (Vision) vs. SAVE LLM-Guided Gene Block Mechanism (Genomics)" width="1698" height="926" loading="lazy">
+            <span class="figure-zoom-hint">Click figure to inspect full resolution ↗</span>
+          </button>
+          <figcaption class="figure-caption"><strong>Figure 2. ViT Patchify (Vision) vs. SAVE Gene Block Mechanism (Genomics).</strong> Instead of hard-patching a structured 2D pixel grid by Euclidean proximity, SAVE extracts 1,536-dim LLM semantic embeddings from NCBI gene summaries (Stage 1) and performs balanced Optimal Transport clustering (Stage 2) to form pathway-coupled Gene Blocks for downstream Latent VAE compression and Latent Flow Matching.</figcaption>
+        </figure>
+
+        <ol class="stage-list">
+          <li><strong>Stage 1 — LLM Semantic Embedding:</strong> Curated NCBI Gene text descriptions are encoded with a pre-trained LLM (<code>text-embedding-ada-002</code>, GenePT) into continuous 1,536-dim semantic vectors <em>g<sub>i</sub></em>, injecting prior biological functional knowledge directly into tokenization.</li>
+          <li><strong>Stage 2 — Balanced Optimal Transport Soft-Patching → Latent FM:</strong> Iterative Optimal Transport minimizes squared Euclidean cost <em>C<sub>ij</sub></em> = ‖<em>g<sub>i</sub></em> − <em>c<sub>j</sub></em><sup>(<em>t</em>)</sup>‖<sub>2</sub><sup>2</sup> under uniform marginal constraints (<em>T</em><strong>1</strong><sub><em>L</em></sub> = <em>a</em>, <em>T</em><sup>⊤</sup><strong>1</strong><sub><em>G</em></sub> = <em>b</em>), yielding non-overlapping, equal-size functional blocks <em>X</em> ∈ ℝ<sup><em>N</em>×<em>L</em>×<em>K</em></sup> that serve as compact tokens for <strong>Latent VAE + OT Flow Matching</strong>.</li>
+        </ol>
+
+        <div class="table-wrap">
+          <table class="data-table data-table-text">
+            <thead>
+              <tr>
+                <th>Dimension</th>
+                <th>ViT Patchify (Vision Domain)</th>
+                <th>SAVE Gene Block Mechanism (Genomics Domain)</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>Input Data Structure</td>
+                <td>Structured 2D pixel grid</td>
+                <td>Unordered, high-dimensional &amp; sparse gene set (~20,000 genes)</td>
+              </tr>
+              <tr>
+                <td>Grouping Basis</td>
+                <td>Physical proximity (Euclidean grid)</td>
+                <td><strong>Biological semantic similarity (pre-trained LLM prior on NCBI descriptions)</strong></td>
+              </tr>
+              <tr>
+                <td>Patching Type</td>
+                <td>Hard-patching (fixed spatial grid)</td>
+                <td><strong>Semantic soft-patching (iterative balanced Optimal Transport clustering)</strong></td>
+              </tr>
+              <tr>
+                <td>Token Properties</td>
+                <td>Functionally agnostic image patches</td>
+                <td><strong>Functionally coupled pathway blocks</strong> (coherent gene programs)</td>
+              </tr>
+              <tr>
+                <td>Downstream Stack &amp; Efficiency</td>
+                <td>Flat patch ViT attention</td>
+                <td><strong>Latent VAE + Latent OT Flow Matching</strong> (<em>O</em>(<em>L</em><sup>2</sup>) attention, <strong>191× training speedup</strong>: 12.5 min vs. 2,391.2 min on RTX 3090)</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <section id="results" class="section-block site-width" aria-labelledby="results-title">
+      <div class="section-header">
+        <p class="eyebrow"><span class="accent-line" aria-hidden="true"></span> 02 / Quantitative &amp; Qualitative Results</p>
+        <h2 id="results-title">Consistent gains across generation, extrapolation, integration, and perturbation.</h2>
+        <p class="section-lead">Paper benchmark comparisons across multi-platform scRNA-seq cohorts (<strong>bold</strong> = best, <em>italic</em> = second best). Full per-dataset Colab Pro+ G4 reproduction numbers are summarized in <a href="#reproduce">Section 04</a>.</p>
+      </div>
+
+      <!-- 2.1 Dual-Condition Generation -->
+      <div class="result-group">
+        <div class="result-heading">
+          <h3>2.1 Dual-Condition Generation (<code>batch</code> + <code>cell_type</code>)</h3>
+          <span class="result-badge">Paper Table 2 · WD ↓ &amp; MMD ↓</span>
+        </div>
+        <p class="result-note">Jointly conditioning on sequencing batch and cell type across three multi-platform scRNA-seq cohorts (Heart, PBMC, and Lung Atlas).</p>
+
+        <div class="table-wrap">
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th>Method</th>
+                <th>Heart WD ↓</th>
+                <th>Heart MMD ↓</th>
+                <th>PBMC WD ↓</th>
+                <th>PBMC MMD ↓</th>
+                <th>Lung Atlas WD ↓</th>
+                <th>Lung Atlas MMD ↓</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>scVI</td>
+                <td>19.18</td>
+                <td>1.19</td>
+                <td>17.75</td>
+                <td>0.95</td>
+                <td>22.20</td>
+                <td>2.27</td>
+              </tr>
+              <tr>
+                <td>CFGen</td>
+                <td><em>12.57</em></td>
+                <td><em>0.66</em></td>
+                <td>17.41</td>
+                <td>0.65</td>
+                <td>28.02</td>
+                <td>1.76</td>
+              </tr>
+              <tr>
+                <td>scDiffusion</td>
+                <td>20.82</td>
+                <td>0.94</td>
+                <td><em>11.38</em></td>
+                <td><em>0.48</em></td>
+                <td><em>13.89</em></td>
+                <td><em>1.71</em></td>
+              </tr>
+              <tr class="row-save">
+                <td>SAVE</td>
+                <td><strong>8.30</strong></td>
+                <td><strong>0.63</strong></td>
+                <td><strong>5.37</strong></td>
+                <td><strong>0.29</strong></td>
+                <td><strong>4.37</strong></td>
+                <td><strong>1.14</strong></td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <figure class="figure-card">
+          <button class="figure-zoom" type="button" data-title="Figure 3 — Dual-Condition Generation on Heart" aria-label="Zoom Figure 3: Dual-condition generation on Heart">
+            <img src="./assets/cond_gen_heart.png" alt="UMAP comparison of scVI, CFGen, scDiffusion, and SAVE on Heart dual-condition generation" width="1500" height="732" loading="lazy">
+            <span class="figure-zoom-hint">Click figure to inspect full resolution ↗</span>
+          </button>
+          <figcaption class="figure-caption"><strong>Figure 3. Dual-condition generation on Heart.</strong> <em>Top:</em> generated vs. ground-truth overlap; <em>Middle:</em> sequencing batches; <em>Bottom:</em> cell types. SAVE accurately preserves both multi-batch structure and cell-type topology.</figcaption>
+        </figure>
+      </div>
+
+      <!-- 2.2 Multi-Condition Generation -->
+      <div class="result-group">
+        <div class="result-heading">
+          <h3>2.2 Multi-Condition Generation &amp; Unseen Extrapolation (5 Covariates)</h3>
+          <span class="result-badge">Paper Table 3 · Lung Cancer (Salcher et al. 2022)</span>
+        </div>
+        <p class="result-note">Evaluated simultaneously across five covariates (<code>assay</code>, <code>development_stage</code>, <code>disease</code>, <code>uicc_stage</code>, <code>cell_type</code>), including held-out <strong>unseen</strong> covariate combinations.</p>
+
+        <div class="table-wrap">
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th>Method</th>
+                <th>Seen WD ↓</th>
+                <th>Seen MMD ↓</th>
+                <th>Unseen WD ↓</th>
+                <th>Unseen MMD ↓</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>CFGen</td>
+                <td>16.94 ± 4.19</td>
+                <td>1.49 ± 1.80</td>
+                <td>23.67 ± 3.08</td>
+                <td>2.76 ± 2.64</td>
+              </tr>
+              <tr>
+                <td>scDiffusion</td>
+                <td><em>5.27 ± 2.14</em></td>
+                <td><em>1.06 ± 1.59</em></td>
+                <td><em>5.29 ± 2.03</em></td>
+                <td><strong>1.87 ± 2.31</strong></td>
+              </tr>
+              <tr class="row-save">
+                <td>SAVE</td>
+                <td><strong>3.10 ± 0.96</strong></td>
+                <td><strong>1.06 ± 1.48</strong></td>
+                <td><strong>4.63 ± 0.95</strong></td>
+                <td><em>2.11 ± 2.11</em></td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <figure class="figure-card">
+          <button class="figure-zoom" type="button" data-title="Figure 4 — Five-Condition Generation on Lung Cancer" aria-label="Zoom Figure 4: Five-condition generation on Lung Cancer">
+            <img src="./assets/multi_cond_lung.png" alt="UMAP comparison for seen and unseen five-condition generation on Lung Cancer" width="1791" height="410" loading="lazy">
+            <span class="figure-zoom-hint">Click figure to inspect full resolution ↗</span>
+          </button>
+          <figcaption class="figure-caption"><strong>Figure 4. Five-condition generation on Lung Cancer.</strong> (a) Seen combination (Smart-seq2, 60-year-old, lung adenocarcinoma, stage IV); (b) Unseen held-out combination (Smart-seq2, 70-year-old, squamous cell lung carcinoma, stage I).</figcaption>
+        </figure>
+      </div>
+
+      <!-- 2.3 Perturbation Prediction -->
+      <div class="result-group">
+        <div class="result-heading">
+          <h3>2.3 Out-of-Sample Perturbation Prediction (PBMC IFN-β)</h3>
+          <span class="result-badge">Paper Table 5 · Leave-One-Out PCC ↑ / R² ↑</span>
+        </div>
+        <p class="result-note">Leave-one-cell-type-out counterfactual prediction of IFN-β stimulation response across all seven PBMC cell types.</p>
+
+        <div class="table-wrap">
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th>Method</th>
+                <th>CD8T</th>
+                <th>CD14+Mono</th>
+                <th>FCGR3A+Mono</th>
+                <th>B</th>
+                <th>CD4T</th>
+                <th>Dendritic</th>
+                <th>NK</th>
+                <th>Average</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>control</td>
+                <td>0.94 / 0.88</td>
+                <td>0.75 / 0.32</td>
+                <td>0.78 / 0.38</td>
+                <td>0.91 / 0.81</td>
+                <td>0.94 / 0.87</td>
+                <td>0.79 / 0.51</td>
+                <td>0.93 / 0.84</td>
+                <td>0.86 / 0.66</td>
+              </tr>
+              <tr>
+                <td>scDisInFact</td>
+                <td>0.85 / 0.43</td>
+                <td>0.77 / 0.47</td>
+                <td>0.71 / 0.43</td>
+                <td>0.84 / 0.45</td>
+                <td>0.85 / 0.43</td>
+                <td>0.76 / 0.47</td>
+                <td>0.79 / 0.44</td>
+                <td>0.80 / 0.45</td>
+              </tr>
+              <tr>
+                <td>MFM</td>
+                <td>0.78 / 0.60</td>
+                <td>0.77 / 0.53</td>
+                <td>0.56 / 0.08</td>
+                <td>0.70 / 0.49</td>
+                <td>0.70 / 0.49</td>
+                <td>0.72 / 0.51</td>
+                <td>0.72 / 0.51</td>
+                <td>0.71 / 0.46</td>
+              </tr>
+              <tr>
+                <td>trVAE</td>
+                <td><em>0.98</em> / 0.96</td>
+                <td>0.82 / 0.39</td>
+                <td>0.83 / 0.32</td>
+                <td>0.90 / 0.78</td>
+                <td><strong>0.97</strong> / <em>0.94</em></td>
+                <td>0.83 / 0.46</td>
+                <td><strong>0.97</strong> / <strong>0.92</strong></td>
+                <td>0.90 / 0.68</td>
+              </tr>
+              <tr>
+                <td>scGEN</td>
+                <td>0.96 / 0.88</td>
+                <td><em>0.95</em> / 0.80</td>
+                <td><strong>0.93</strong> / <strong>0.77</strong></td>
+                <td><em>0.91</em> / <em>0.83</em></td>
+                <td>0.92 / 0.85</td>
+                <td><strong>0.96</strong> / <strong>0.89</strong></td>
+                <td>0.93 / 0.84</td>
+                <td><em>0.94</em> / <em>0.84</em></td>
+              </tr>
+              <tr>
+                <td>CellOT</td>
+                <td><strong>0.99</strong> / <strong>0.97</strong></td>
+                <td><strong>0.99</strong> / <strong>0.98</strong></td>
+                <td>0.77 / 0.02</td>
+                <td>0.95 / 0.89</td>
+                <td><strong>0.97</strong> / <em>0.94</em></td>
+                <td><strong>0.96</strong> / <em>0.88</em></td>
+                <td><em>0.96</em> / <em>0.90</em></td>
+                <td><em>0.94</em> / 0.80</td>
+              </tr>
+              <tr class="row-save">
+                <td>SAVE</td>
+                <td><em>0.98</em> / <strong>0.97</strong></td>
+                <td><em>0.97</em> / <em>0.89</em></td>
+                <td><em>0.91</em> / <em>0.53</em></td>
+                <td><strong>0.97</strong> / <strong>0.94</strong></td>
+                <td><em>0.96</em> / <strong>0.97</strong></td>
+                <td><strong>0.96</strong> / 0.81</td>
+                <td><em>0.96</em> / <em>0.90</em></td>
+                <td><strong>0.96</strong> / <strong>0.86</strong></td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <figure class="figure-card">
+          <button class="figure-zoom" type="button" data-title="Figure 5 — Perturbation Prediction on PBMC IFN-β" aria-label="Zoom Figure 5: Perturbation prediction on PBMC IFN-beta">
+            <img src="./assets/perturb_pbmc_ifn.png" alt="UMAP alignment and top interferon-response marker violin plots on PBMC IFN-beta" width="1790" height="566" loading="lazy">
+            <span class="figure-zoom-hint">Click figure to inspect full resolution ↗</span>
+          </button>
+          <figcaption class="figure-caption"><strong>Figure 5. Perturbation prediction on PBMC IFN-β.</strong> <em>Top:</em> UMAP alignment against ground-truth stimulated cells across all 7 held-out cell types; <em>Bottom:</em> predicted expression distributions of key interferon-response markers (<code>ISG15</code>, <code>TNFSF10</code>).</figcaption>
+        </figure>
+      </div>
+
+      <!-- 2.4 Batch Effect Correction & Block Size Scaling -->
+      <div class="result-group">
+        <div class="result-heading">
+          <h3>2.4 Batch Effect Correction &amp; Block Size Scaling</h3>
+          <span class="result-badge">Paper Table 4 (scIB ↑) · RTX 3090 Efficiency</span>
+        </div>
+        <p class="result-note">Without explicit batch-integration objectives, SAVE's condition-aware latent space disentangles technical batch variation from biological identity.</p>
+
+        <div class="table-wrap">
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th>Method</th>
+                <th>Lung Bio</th>
+                <th>Lung Batch</th>
+                <th>Lung scIB</th>
+                <th>Heart Bio</th>
+                <th>Heart Batch</th>
+                <th>Heart scIB</th>
+                <th>PBMC Bio</th>
+                <th>PBMC Batch</th>
+                <th>PBMC scIB</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>Scanorama</td>
+                <td><em>0.70</em></td>
+                <td>0.88</td>
+                <td>0.77</td>
+                <td>0.72</td>
+                <td>0.82</td>
+                <td>0.76</td>
+                <td>0.71</td>
+                <td>0.93</td>
+                <td>0.80</td>
+              </tr>
+              <tr>
+                <td>Harmony</td>
+                <td>0.65</td>
+                <td><strong>0.93</strong></td>
+                <td>0.76</td>
+                <td><strong>0.76</strong></td>
+                <td><strong>0.89</strong></td>
+                <td><strong>0.81</strong></td>
+                <td>0.71</td>
+                <td><strong>0.95</strong></td>
+                <td>0.80</td>
+              </tr>
+              <tr>
+                <td>scVI</td>
+                <td>0.58</td>
+                <td>0.83</td>
+                <td>0.68</td>
+                <td>0.66</td>
+                <td>0.81</td>
+                <td>0.72</td>
+                <td>0.47</td>
+                <td>0.78</td>
+                <td>0.59</td>
+              </tr>
+              <tr>
+                <td>trVAE</td>
+                <td>0.69</td>
+                <td>0.90</td>
+                <td><em>0.78</em></td>
+                <td>0.75</td>
+                <td>0.83</td>
+                <td>0.78</td>
+                <td><strong>0.75</strong></td>
+                <td>0.91</td>
+                <td><em>0.82</em></td>
+              </tr>
+              <tr class="row-save">
+                <td>SAVE</td>
+                <td><strong>0.73</strong></td>
+                <td><strong>0.93</strong></td>
+                <td><strong>0.81</strong></td>
+                <td><strong>0.76</strong></td>
+                <td><em>0.86</em></td>
+                <td><em>0.80</em></td>
+                <td><strong>0.75</strong></td>
+                <td><strong>0.95</strong></td>
+                <td><strong>0.83</strong></td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <p class="result-note">Training efficiency and block size scaling measured on Heart (19,112 genes) on a single NVIDIA RTX 3090 (24 GB VRAM):</p>
+
+        <div class="table-wrap table-wrap-compact">
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th>Block Size (K)</th>
+                <th>Num. Blocks (L)</th>
+                <th>Training Time</th>
+                <th>Speedup</th>
+                <th>Heart WD ↓</th>
+                <th>Heart MMD ↓</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td><code>1</code> (naive gene-level)</td>
+                <td>19,112</td>
+                <td>2391.2 min</td>
+                <td>1.0×</td>
+                <td>—</td>
+                <td>—</td>
+              </tr>
+              <tr>
+                <td><code>1600</code></td>
+                <td>12</td>
+                <td>16.4 min</td>
+                <td>146×</td>
+                <td>9.64</td>
+                <td>0.65</td>
+              </tr>
+              <tr class="row-save">
+                <td><code>3200</code> (default)</td>
+                <td><strong>6</strong></td>
+                <td><strong>12.5 min</strong></td>
+                <td><strong>191×</strong></td>
+                <td><strong>8.30</strong></td>
+                <td><strong>0.63</strong></td>
+              </tr>
+              <tr>
+                <td><code>5600</code></td>
+                <td>4</td>
+                <td>9.0 min</td>
+                <td>266×</td>
+                <td>8.41</td>
+                <td>0.63</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <p class="callout-note"><strong>Attention Ablation:</strong> Removing Gene Block Attention (<code>SAVE w/o Att.</code>) degrades Heart conditional generation performance from WD <strong>8.30</strong> / MMD <strong>0.63</strong> to WD 8.89 / MMD 0.65.</p>
+      </div>
+    </section>
+
+    <section id="interpretability" class="section-block site-width" aria-labelledby="interp-title">
+      <div class="section-header">
+        <p class="eyebrow"><span class="accent-line" aria-hidden="true"></span> 03 / Biological Interpretability</p>
+        <h2 id="interp-title">Condition-modulated attention recovers coherent biological pathways.</h2>
+        <p class="section-lead">Extracting condition-modulated attention weights from the Flow Matching Transformer on Heart (16,000 HVGs partitioned into 5 blocks of size 3,200) shows that SAVE attends to biologically meaningful gene programs across cell types and batches.</p>
+      </div>
+
+      <figure class="figure-card">
+        <button class="figure-zoom" type="button" data-title="Figure 6 — Condition-Modulated Block Attention Heatmap" aria-label="Zoom Figure 6: Condition-Modulated Block Attention Heatmap">
+          <img src="./assets/block_attention_heatmap.png" alt="Heatmap of dominant attended gene block across Heart cell types and sequencing batches" width="1800" height="1028" loading="lazy">
+          <span class="figure-zoom-hint">Click figure to inspect full resolution ↗</span>
+        </button>
+        <figcaption class="figure-caption"><strong>Figure 6. Condition-modulated Gene Block attention across Heart cell types and batches.</strong> Dominant attended semantic gene block for each observed <code>(batch, cell_type)</code> pair.</figcaption>
+      </figure>
+
+      <div class="interp-grid">
+        <article class="interp-item">
+          <h3>Physiological Alignment</h3>
+          <p>Atrial and ventricular cardiomyocytes consistently attend to <strong>Block 1</strong> (Fatty Acid β-Oxidation), matching the heart's primary lipid metabolism signature across batches.</p>
+        </article>
+        <article class="interp-item">
+          <h3>Functional Specificity</h3>
+          <p>Endothelial cells and fibroblasts dynamically shift attention toward <strong>Block 4</strong> (Adenylate Cyclase-Activating GPCR Signaling) and <strong>Block 3</strong> (Protein Localization to Plasma Membrane), reflecting extracellular signaling and structural roles.</p>
+        </article>
+        <article class="interp-item">
+          <h3>Biological Filtering</h3>
+          <p><strong>Block 2</strong> (Broad/General Cellular Functions without a dominant enriched pathway) is universally suppressed across conditions, demonstrating autonomous filtering of non-discriminative gene programs.</p>
+        </article>
+      </div>
+    </section>
+
+    <section id="reproduce" class="section-block site-width" aria-labelledby="repro-title">
+      <div class="section-header">
+        <p class="eyebrow"><span class="accent-line" aria-hidden="true"></span> 04 / Verified ICLR 2026 Reproduction</p>
+        <h2 id="repro-title">One-click Google Colab &amp; local CLI verification.</h2>
+      </div>
+
+      <div class="repro-spotlight">
+        <div class="spotlight-topline">
+          <p class="eyebrow">Reproducibility · Colab Pro+ Verified</p>
+          <span class="spotlight-status"><span aria-hidden="true"></span> All 5 Tables (11 Datasets) Completed</span>
+        </div>
+        <h3>Reproduce all 5 ICLR 2026 tables in Google Colab or locally</h3>
+        <p>All five quantitative benchmarks (<strong>Tables 1–5</strong>, 11 datasets) completed end-to-end on Colab Pro+ (<code>NVIDIA RTX PRO 6000 Blackwell Server Edition</code>, <code>94.97 GB</code> VRAM, PyTorch <code>2.14.1+cu130</code>, CUDA <code>13.0</code>) with TF32, SDPA, <code>bfloat16</code> Flow Matching autocast, and automatic GPU/CPU parallelism (<code>88m 15s</code> wall-clock for parallel Tables 1–4; <code>~7m</code> for single-run Heart).</p>
+        <div class="spotlight-actions">
+          <a class="btn btn-spotlight-primary" href="https://colab.research.google.com/github/fdu-wangfeilab/sc-save/blob/main/notebooks/SAVE_ICLR2026_Reproduce_Colab.ipynb">Launch Colab Notebook <span aria-hidden="true">↗</span></a>
+          <a class="btn btn-spotlight-ghost" href="https://github.com/fdu-wangfeilab/sc-save/blob/main/REPRODUCIBILITY.md">REPRODUCIBILITY.md <span aria-hidden="true">↗</span></a>
+          <a class="btn btn-spotlight-ghost" href="https://github.com/fdu-wangfeilab/sc-save/blob/main/results/iclr2026_colab_repro.json">Verified JSON Results <span aria-hidden="true">↗</span></a>
+        </div>
+        <div class="spotlight-meta">
+          <span><strong>Ref:</strong> <code>reproduce-iclr2026@307c925</code> (merged to <code>main</code>)</span>
+          <span><strong>Workers:</strong> <code>gpu_workers="auto"</code> (4) · <code>cpu_workers="auto"</code> (8)</span>
+          <span><strong>Notebook:</strong> <code>notebooks/SAVE_ICLR2026_Reproduce_Colab.ipynb</code></span>
+        </div>
+      </div>
+
+      <div class="table-wrap">
+        <table class="data-table">
+          <thead>
+            <tr>
+              <th>Benchmark</th>
+              <th>Key Metric(s)</th>
+              <th>Paper Target</th>
+              <th>Colab G4 Reproduced</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><strong>Table 1</strong> (<code>pbmc3k</code> / <code>dentategyrus</code> / <code>tabula_muris</code>)</td>
+              <td>WD ↓ / MMD ↓</td>
+              <td>19.14/1.80 · 9.16/0.17 · 10.86/0.04</td>
+              <td>12.76/0.48 · 8.08/0.11 · 10.65/0.04</td>
+            </tr>
+            <tr>
+              <td><strong>Table 2</strong> (<code>heart</code> / <code>pbmc</code> / <code>lung_atlas</code>)</td>
+              <td>WD ↓ / MMD ↓</td>
+              <td>8.30/0.63 · 5.37/0.29 · 4.37/1.14</td>
+              <td>8.83/0.64 · 5.39/0.30 · 4.42/1.16</td>
+            </tr>
+            <tr>
+              <td><strong>Table 3</strong> (<code>lung_cancer</code> Seen / Unseen)</td>
+              <td>WD ↓ / MMD ↓</td>
+              <td>3.10/1.06 · 4.63/2.11</td>
+              <td>3.07/1.08 · 5.39/2.16</td>
+            </tr>
+            <tr>
+              <td><strong>Table 4</strong> (<code>lung_atlas</code> / <code>heart</code> / <code>pbmc</code> BEC)</td>
+              <td>scIB ↑</td>
+              <td>0.8128 · 0.7983 · 0.8309</td>
+              <td>0.8097 · 0.8019 · 0.8125</td>
+            </tr>
+            <tr>
+              <td><strong>Table 5</strong> (<code>pbmc_ifn</code> 7-fold LOO Average)</td>
+              <td>PCC ↑ / R² ↑ / WD ↓</td>
+              <td>0.96 / 0.86 / 5.15</td>
+              <td>0.943 / 0.807 / 5.77</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="code-card">
+        <div class="code-card-header">
+          <span>Local CLI Quickstart (Tables 1–5)</span>
+          <button class="copy-btn" type="button" data-copy-target="quickstart-code" aria-live="polite">Copy Command</button>
+        </div>
+        <pre id="quickstart-code"><code>git clone https://github.com/fdu-wangfeilab/sc-save.git &amp;&amp; cd sc-save
+uv sync --extra all   # or: pip install -e ".[all]"
+
+# Run all 5 paper benchmarks end-to-end (or pass --tasks table2)
+python examples/reproduce_iclr2026.py \
+  --tasks all \
+  --data-root ./data \
+  --output-root ./outputs/iclr2026 \
+  --gpu-workers auto \
+  --cpu-workers auto \
+  --prep-workers 4 \
+  --device 0</code></pre>
+      </div>
+    </section>
+
+    <section id="citation" class="section-block site-width" aria-labelledby="citation-title">
+      <div class="section-header">
+        <p class="eyebrow"><span class="accent-line" aria-hidden="true"></span> 05 / Citation</p>
+        <h2 id="citation-title">Cite this work.</h2>
+        <p class="section-lead">If you use SAVE or this codebase in your research, please cite our ICLR 2026 paper.</p>
+      </div>
+
+      <div class="code-card">
+        <div class="code-card-header">
+          <span>BibTeX</span>
+          <button class="copy-btn" type="button" data-copy-target="bibtex-code" aria-live="polite">Copy BibTeX</button>
+        </div>
+        <pre id="bibtex-code"><code>@inproceedings{
+li2026save,
+title={{SAVE}: A Generalizable Framework for Multi-Condition Single-Cell Generation with Gene Block Attention},
+author={Jiahao Li and Jiayi Dong and Peng Ye and Xiaochi Zhou and Haohai Lu and Fei Wang},
+booktitle={The Fourteenth International Conference on Learning Representations},
+year={2026},
+url={https://openreview.net/forum?id=l7QEoK4uDP}
+}</code></pre>
+      </div>
+    </section>
+  </main>
+
+  <footer class="site-footer site-width">
+    <span>SAVE · ICLR 2026 · Fudan University</span>
+    <nav class="footer-links" aria-label="Footer links">
+      <a href="https://openreview.net/forum?id=l7QEoK4uDP">OpenReview</a>
+      <a href="https://arxiv.org/abs/2604.16776">arXiv</a>
+      <a href="https://github.com/fdu-wangfeilab/sc-save">GitHub</a>
+      <a href="https://colab.research.google.com/github/fdu-wangfeilab/sc-save/blob/main/notebooks/SAVE_ICLR2026_Reproduce_Colab.ipynb">Colab</a>
+      <a href="https://github.com/fdu-wangfeilab/sc-save/blob/main/LICENSE">MIT License</a>
+      <a href="https://argonx.dev/">Jiahao Li (argonx.dev)</a>
+    </nav>
+  </footer>
+
+  <dialog id="figure-lightbox" class="figure-dialog" aria-labelledby="lightbox-title">
+    <div class="dialog-inner">
+      <div class="dialog-bar">
+        <span id="lightbox-title">Figure</span>
+        <button id="lightbox-close" class="dialog-close" type="button">Close</button>
+      </div>
+      <div class="dialog-body">
+        <img id="lightbox-img" alt="">
+        <p id="lightbox-caption" class="dialog-caption"></p>
+      </div>
+    </div>
+  </dialog>
+
+  <script src="./script.js"></script>
+</body>
+</html>
