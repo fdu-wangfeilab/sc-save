@@ -9,7 +9,7 @@
 </p>
 
 <p>
-  <a href="https://colab.research.google.com/github/fdu-wangfeilab/sc-save/blob/reproduce-iclr2026/notebooks/SAVE_ICLR2026_Reproduce_Colab.ipynb"><img src="https://colab.research.google.com/assets/colab-badge.svg" alt="Open In Colab" /></a>
+  <a href="https://colab.research.google.com/github/fdu-wangfeilab/sc-save/blob/main/notebooks/SAVE_ICLR2026_Reproduce_Colab.ipynb"><img src="https://colab.research.google.com/assets/colab-badge.svg" alt="Open In Colab" /></a>
   <a href="https://openreview.net/forum?id=l7QEoK4uDP"><img src="https://img.shields.io/badge/ICLR_2026-OpenReview-0F766E?style=flat-square&labelColor=0D1117" alt="ICLR 2026 OpenReview" /></a>
   <a href="https://arxiv.org/abs/2604.16776"><img src="https://img.shields.io/badge/arXiv-2604.16776-10B981?style=flat-square&labelColor=0D1117&logo=arxiv&logoColor=white" alt="arXiv 2604.16776" /></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-1F6F5B?style=flat-square&labelColor=0D1117" alt="MIT License" /></a>
@@ -181,9 +181,7 @@ REPRODUCIBILITY.md    Detailed ICLR 2026 paper reproduction guide & verified Col
 
 ## ICLR 2026 Reproduction Quickstart
 
-[![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/fdu-wangfeilab/sc-save/blob/reproduce-iclr2026/notebooks/SAVE_ICLR2026_Reproduce_Colab.ipynb)
-
-> **Colab Link Note**: The badge above points to [`notebooks/SAVE_ICLR2026_Reproduce_Colab.ipynb`](notebooks/SAVE_ICLR2026_Reproduce_Colab.ipynb) on the `reproduce-iclr2026` branch (`blob/reproduce-iclr2026/...`; update to `blob/main/...` once merged to `main`).
+[![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/fdu-wangfeilab/sc-save/blob/main/notebooks/SAVE_ICLR2026_Reproduce_Colab.ipynb)
 
 All five quantitative benchmarks (**Tables 1–5**) can be reproduced either in **Google Colab Pro+ (G4 96 GB / H100 / A100)** or locally via [`examples/reproduce_iclr2026.py`](examples/reproduce_iclr2026.py):
 

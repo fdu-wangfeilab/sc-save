@@ -1,6 +1,6 @@
 # ICLR 2026 Paper Reproducibility Guide
 
-[![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/fdu-wangfeilab/sc-save/blob/reproduce-iclr2026/notebooks/SAVE_ICLR2026_Reproduce_Colab.ipynb)
+[![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/fdu-wangfeilab/sc-save/blob/main/notebooks/SAVE_ICLR2026_Reproduce_Colab.ipynb)
 
 This guide documents how to reproduce all five quantitative benchmarks (Tables 1–5) from the ICLR 2026 paper:
 
@@ -162,7 +162,7 @@ All primary benchmarks use the unified `SAVE-B` / `SAVE-B-perturb` configuration
 Launch [`notebooks/SAVE_ICLR2026_Reproduce_Colab.ipynb`](notebooks/SAVE_ICLR2026_Reproduce_Colab.ipynb) in Google Colab Pro+ with a **G4 (96 GB)**, **H100 (80 GB)**, or **A100 (40/80 GB)** High-RAM runtime:
 
 1. **Cell 1**: Verify GPU & CUDA PyTorch environment and install `sc-save` dependencies without downgrading Colab's PyTorch.
-2. **Cell 2**: Clone (or `git pull --ff-only` if present) `fdu-wangfeilab/sc-save` (`reproduce-iclr2026` branch), set parallel defaults (`PREP_WORKERS = 4`, `GPU_WORKERS = "auto"`, `CPU_WORKERS = "auto"`), and optionally enable Google Drive caching (`USE_GOOGLE_DRIVE = False` by default).
+2. **Cell 2**: Clone (or `git pull --ff-only` if present) `fdu-wangfeilab/sc-save` (`main` branch), set parallel defaults (`PREP_WORKERS = 4`, `GPU_WORKERS = "auto"`, `CPU_WORKERS = "auto"`), and optionally enable Google Drive caching (`USE_GOOGLE_DRIVE = False` by default).
 3. **Cell 3**: Download & preprocess datasets + GenePT embeddings concurrently via `--workers <PREP_WORKERS>`.
 4. **Fast Parallel All-Tables Runner (Optional)**: Set `RUN_ALL_PARALLEL = True` to run **all 5 tables concurrently** (`--tasks all --gpu-workers auto --cpu-workers auto --prep-workers 4`), then jump directly to Cell 9.
 5. **Cells 4–8**: Or run Tables 2, 1, 3, 4, and 5 individually or selectively (also using `GPU_WORKERS = "auto"` and `CPU_WORKERS = "auto"`), printing live comparison against paper targets.
@@ -177,7 +177,7 @@ Launch [`notebooks/SAVE_ICLR2026_Reproduce_Colab.ipynb`](notebooks/SAVE_ICLR2026
 From the repository root:
 
 ```bash
-git clone --branch reproduce-iclr2026 https://github.com/fdu-wangfeilab/sc-save.git
+git clone https://github.com/fdu-wangfeilab/sc-save.git
 cd sc-save
 
 # Option 1: Using uv (recommended)
