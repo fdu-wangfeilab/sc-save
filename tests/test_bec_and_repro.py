@@ -14,7 +14,9 @@ import pandas as pd
 import pytest
 import torch
 
+import scanpy as sc
 from sc_save_public.bec_integration import (
+    _compat_scanpy_pca_for_scib,
     compute_scib_summary,
     run_bec_integration,
     scib_eval,
@@ -101,6 +103,31 @@ def test_scib_eval_runs_without_r_on_synthetic_adata():
     assert "scib_score" in res
     assert "PCR_batch" in res
     assert res["scib_score"] == pytest.approx(0.6 * res["avg_bio"] + 0.4 * res["avg_batch"])
+
+
+def test_compat_scanpy_pca_for_scib_translates_and_restores(monkeypatch):
+    calls = []
+
+    def mock_pca_no_use_hv(adata, mask_var="UNSET"):
+        calls.append((adata, mask_var))
+        return "ok"
+
+    monkeypatch.setattr(sc.tl, "pca", mock_pca_no_use_hv)
+
+    with pytest.raises(RuntimeError, match="boom"):
+        with _compat_scanpy_pca_for_scib():
+            assert sc.tl.pca("a1", use_highly_variable=False) == "ok"
+            assert sc.tl.pca("a2", use_highly_variable=True) == "ok"
+            assert sc.tl.pca("a3", use_highly_variable=True, mask_var="custom") == "ok"
+            raise RuntimeError("boom")
+
+    assert calls == [
+        ("a1", None),
+        ("a2", "highly_variable"),
+        ("a3", "custom"),
+    ]
+    # Restored cleanly even after an exception inside the context
+    assert sc.tl.pca is mock_pca_no_use_hv
 
 
 def test_run_bec_integration_smoke_and_ckpt_resume(tmp_path):

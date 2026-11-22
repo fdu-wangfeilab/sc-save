@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import functools
 import inspect
 import json
 import re
@@ -126,6 +127,30 @@ def _pandas_value_counts_compat():
             delattr(pd, "value_counts")
 
 
+@contextmanager
+def _compat_scanpy_pca_for_scib():
+    """Translate removed sc.tl.pca(use_highly_variable=...) on Scanpy >=1.13 for scib."""
+    orig_pca = sc.tl.pca
+    params = inspect.signature(orig_pca).parameters
+    if "use_highly_variable" in params:
+        yield
+        return
+
+    @functools.wraps(orig_pca)
+    def _pca_compat(*args, **kwargs):
+        if "use_highly_variable" in kwargs:
+            use_hv = kwargs.pop("use_highly_variable")
+            if use_hv is not None and "mask_var" in params and "mask_var" not in kwargs:
+                kwargs["mask_var"] = "highly_variable" if use_hv else None
+        return orig_pca(*args, **kwargs)
+
+    sc.tl.pca = _pca_compat
+    try:
+        yield
+    finally:
+        sc.tl.pca = orig_pca
+
+
 def compute_scib_summary(metrics_dict: dict[str, Any]) -> dict[str, float]:
     """Compute paper-exact avg_bio, avg_batch, and scib_score from raw scIB metrics."""
     clean: dict[str, float] = {}
@@ -189,7 +214,7 @@ def scib_eval(
     accepted = inspect.signature(scib.metrics.metrics).parameters
     filtered_kwargs = {k: v for k, v in candidate_kwargs.items() if k in accepted}
 
-    with _pandas_value_counts_compat():
+    with _pandas_value_counts_compat(), _compat_scanpy_pca_for_scib():
         results = scib.metrics.metrics(adata_int, adata_int=adata_int, **filtered_kwargs)
 
     raw_dict = results[0].to_dict() if hasattr(results[0], "to_dict") else dict(results[0])

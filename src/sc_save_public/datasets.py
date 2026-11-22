@@ -1123,8 +1123,9 @@ def ensure_log1p_normalized(
     target_sum: float = 1e4,
     *,
     preserve_counts_layer: bool = True,
+    normalize_total: bool = True,
 ) -> ad.AnnData:
-    """Normalize raw counts to target_sum=1e4 + log1p; no-op if already log1p-normalized."""
+    """Apply log1p (and optionally normalize_total) if raw/unlogged; no-op if already log1p."""
     if adata.n_obs == 0 or adata.n_vars == 0 or "log1p" in adata.uns:
         return adata
 
@@ -1133,10 +1134,12 @@ def ensure_log1p_normalized(
     if is_raw:
         if preserve_counts_layer and "counts" not in adata.layers:
             adata.layers["counts"] = adata.X.copy()
-        sc.pp.normalize_total(adata, target_sum=target_sum)
+        if normalize_total:
+            sc.pp.normalize_total(adata, target_sum=target_sum)
         sc.pp.log1p(adata)
     elif x_max > float(np.log1p(target_sum)) + 1e-4:
-        sc.pp.normalize_total(adata, target_sum=target_sum)
+        if normalize_total:
+            sc.pp.normalize_total(adata, target_sum=target_sum)
         sc.pp.log1p(adata)
     return adata
 
@@ -1649,7 +1652,9 @@ def _prepare_table2_dual(
     adata.var_names_make_unique()
     _standardize_dataset_obs(spec, adata)
     adata = _subsample_adata(adata, subset_cells, stratify_cols=spec.cond_cols, seed=seed)
-    ensure_log1p_normalized(adata, preserve_counts_layer=True)
+    # Match iclr-ver ot_split_with_pad.ipynb & gene_block_construction.py: log1p only
+    # without normalize_total(1e4) for Table 2 dual-condition generation.
+    ensure_log1p_normalized(adata, preserve_counts_layer=True, normalize_total=False)
 
     processed, stats = apply_gene_block_construction(
         adata,

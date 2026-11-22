@@ -657,3 +657,48 @@ def test_ensure_genept_embeddings_trailing_dot_and_exact_preference(
     extracted_exact = ds.ensure_genept_embeddings(root_exact)
     loaded_exact = pickle.loads(extracted_exact.read_bytes())
     assert set(loaded_exact.keys()) == {"EXACT_GENE"}
+
+
+def test_table2_heart_log1p_only_without_normalize_total(tmp_path: Path) -> None:
+    genept_genes = [f"HEART_G_{i}" for i in range(3250)]
+    extra_genes = [f"HEART_EX_{i}" for i in range(40)]
+    all_genes = genept_genes + extra_genes
+
+    data_root = tmp_path / "data"
+    emb_path = _write_fake_genept_pickle(
+        data_root / "genept" / ds.GENEPT_PICKLE_NAME, genept_genes
+    )
+    raw_dir = data_root / "raw" / "dual_cond"
+    raw_dir.mkdir(parents=True)
+
+    # Raw integer counts with total UMI per cell != 1e4 and max raw count == 7578
+    # (matching HCA Heart raw counts: log1p(7578) == 8.933137 without normalize_total)
+    heart_obs = pd.DataFrame(
+        {"donor": ["D1", "D2"] * 6, "cell_type": ["CM", "FB"] * 6}
+    )
+    raw_adata = _make_synthetic_adata(
+        12, all_genes, heart_obs, raw_counts=True, sparse_x=False, seed=7
+    )
+    raw_adata.X[0, 0] = 7578.0
+    raw_adata.X = sparse.csr_matrix(raw_adata.X)
+    raw_adata.write_h5ad(raw_dir / "hca_subsampled_20k.h5ad")
+
+    rec = ds.prepare_dataset(
+        "heart",
+        data_root=data_root,
+        gene_embedding_path=emb_path,
+        skip_download=True,
+    )
+    heart = sc.read_h5ad(rec.primary_path)
+    assert "counts" in heart.layers
+    assert "log1p" in heart.uns
+    assert float(heart.layers["counts"].max()) == pytest.approx(7578.0)
+    assert float(heart.X.max()) == pytest.approx(float(np.log1p(7578.0)), rel=1e-5, abs=1e-5)
+    # Confirm raw entry was log1p-transformed directly without library-size scaling.
+    real_mask = ~heart.var["is_pad"].astype(bool).to_numpy()
+    np.testing.assert_allclose(
+        heart.X[:, real_mask].toarray(),
+        np.log1p(heart.layers["counts"][:, real_mask].toarray()),
+        rtol=1e-5,
+        atol=1e-5,
+    )
