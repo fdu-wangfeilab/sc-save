@@ -1,21 +1,176 @@
-# sc-save-public
+<div align="center">
 
-Public-facing repository for gradually open-sourcing selected `SAVE` examples and reusable utilities.
+<h1>SAVE: A Generalizable Framework for Multi-Condition Single-Cell Generation with Gene Block Attention</h1>
 
-The current public examples cover:
+<p>
+  <strong>Jiahao Li</strong>, Jiayi Dong, Peng Ye, Xiaochi Zhou, Haohai Lu, Fei Wang<sup>*</sup>
+  <br/>
+  <em>College of Computer Science and Artificial Intelligence, Fudan University</em>
+</p>
 
-- gene block construction
-- conditional generation
-- conditional distribution evaluation
-- perturbation prediction
+<p>
+  <a href="https://openreview.net/forum?id=l7QEoK4uDP"><img src="https://img.shields.io/badge/ICLR_2026-OpenReview-0F766E?style=flat-square&labelColor=0D1117" alt="ICLR 2026 OpenReview" /></a>
+  <a href="https://arxiv.org/abs/2604.16776"><img src="https://img.shields.io/badge/arXiv-2604.16776-10B981?style=flat-square&labelColor=0D1117&logo=arxiv&logoColor=white" alt="arXiv 2604.16776" /></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-1F6F5B?style=flat-square&labelColor=0D1117" alt="MIT License" /></a>
+  <a href="#environment-installation"><img src="https://img.shields.io/badge/Python-3.10-0D1117?style=flat-square&logo=python&logoColor=2DD4BF" alt="Python 3.10" /></a>
+  <a href="#environment-installation"><img src="https://img.shields.io/badge/PyTorch-2.5.1-0D1117?style=flat-square&logo=pytorch&logoColor=10B981" alt="PyTorch 2.5.1" /></a>
+</p>
 
-## Repository Layout
+<p>
+  <a href="#overview">Overview</a> &middot;
+  <a href="#key-results">Key Results</a> &middot;
+  <a href="#biological-interpretability">Interpretability</a> &middot;
+  <a href="#environment-installation">Installation</a> &middot;
+  <a href="#quick-start">Usage</a> &middot;
+  <a href="#citation">Citation</a>
+</p>
+
+</div>
+
+---
+
+## Overview
+
+**SAVE** is a unified conditional generative framework for multi-condition single-cell RNA-seq modeling. Instead of attending over ~20,000 flat gene tokens, SAVE groups semantically related genes into balanced **Gene Blocks** and combines a latent Variational Autoencoder with masked **Optimal-Transport Flow Matching** to model complex biological and technical covariates within a single architecture.
+
+- **Gene Block Attention (191× Speedup):** Partitions LLM-embedded NCBI gene summaries into $L$ balanced functional blocks of size $K = 3200$ via Optimal Transport clustering, reducing Transformer complexity from $\mathcal{O}(G^2)$ to $\mathcal{O}(L^2)$ (12.5 min vs. 2391.2 min on a single RTX 3090 24GB).
+- **Masked Condition Modeling & Multi-Condition CFG:** Injects arbitrary biological/technical covariates via Adaptive Layer Normalization (`AdaLN`) with independent condition masking ($p = 0.6$) and multi-condition Classifier-Free Guidance, enabling zero-shot extrapolation to **unseen condition combinations** across 1–5 covariates.
+- **Unified SOTA Performance:** Using one fixed configuration across **8 benchmarks**, SAVE achieves state-of-the-art results on **conditional generation**, **batch effect correction** (without task-specific training), and **out-of-sample perturbation prediction**, while yielding biologically interpretable pathway-level attention maps.
+
+<p align="center">
+  <img src="docs/assets/framework.png" width="96%" alt="SAVE Architecture Overview" />
+</p>
+<p align="center">
+  <em><strong>Figure 1. Overview of SAVE.</strong> (Left) Semantic gene summaries are clustered via Optimal Transport into balanced gene blocks and reshaped into structured tensors. (Bottom) A Gene Block Attention VAE compresses profiles into latent space. (Top) Conditional Flow Matching with AdaLN and condition masking models multi-condition trajectories for generation, integration, and perturbation transfer.</em>
+</p>
+
+---
+
+## Key Results
+
+### 1. Dual-Condition Generation (`batch` + `cell_type`)
+
+Quantitative comparison on three multi-platform scRNA-seq datasets (Wasserstein Distance $\downarrow$ and Maximum Mean Discrepancy $\downarrow$; **bold** = best, *italic* = second best):
+
+| Method | Heart WD $\downarrow$ | Heart MMD $\downarrow$ | PBMC WD $\downarrow$ | PBMC MMD $\downarrow$ | Lung Atlas WD $\downarrow$ | Lung Atlas MMD $\downarrow$ |
+| :--- | :---: | :---: | :---: | :---: | :---: | :---: |
+| scVI | 19.18 | 1.19 | 17.75 | 0.95 | 22.20 | 2.27 |
+| CFGen | *12.57* | *0.66* | 17.41 | 0.65 | 28.02 | 1.76 |
+| scDiffusion | 20.82 | 0.94 | *11.38* | *0.48* | *13.89* | *1.71* |
+| **SAVE** | **8.30** | **0.63** | **5.37** | **0.29** | **4.37** | **1.14** |
+
+<p align="center">
+  <img src="docs/assets/cond_gen_heart.png" width="94%" alt="Dual-Condition UMAP Visualization on Heart" />
+</p>
+<p align="center">
+  <em><strong>Figure 2. Dual-condition generation on Heart.</strong> Top: generated vs. ground-truth overlap; Middle: sequencing batches; Bottom: cell types. SAVE accurately preserves both multi-batch structure and cell-type topology.</em>
+</p>
+
+---
+
+### 2. Multi-Condition Generation & Unseen Extrapolation (5 Covariates)
+
+Evaluated on the **Lung Cancer** benchmark across 5 simultaneous covariates (`assay`, `development_stage`, `disease`, `uicc_stage`, `cell_type`), including held-out **unseen** combinations:
+
+| Method | Seen WD $\downarrow$ | Seen MMD $\downarrow$ | Unseen WD $\downarrow$ | Unseen MMD $\downarrow$ |
+| :--- | :---: | :---: | :---: | :---: |
+| CFGen | 16.94 ± 4.19 | 1.49 ± 1.80 | 23.67 ± 3.08 | 2.76 ± 2.64 |
+| scDiffusion | *5.27 ± 2.14* | *1.06 ± 1.59* | *5.29 ± 2.03* | **1.87 ± 2.31** |
+| **SAVE** | **3.10 ± 0.96** | **1.06 ± 1.48** | **4.63 ± 0.95** | *2.11 ± 2.11* |
+
+<p align="center">
+  <img src="docs/assets/multi_cond_lung.png" width="96%" alt="5-Condition Generation on Lung Cancer (Seen and Unseen)" />
+</p>
+<p align="center">
+  <em><strong>Figure 3. Five-condition generation on Lung Cancer.</strong> (a) Seen combination (Smart-seq2, 60-year-old, lung adenocarcinoma, stage IV); (b) Unseen held-out combination (Smart-seq2, 70-year-old, squamous cell lung carcinoma, stage I).</em>
+</p>
+
+---
+
+### 3. Out-of-Sample Perturbation Prediction (PBMC IFN-$\beta$)
+
+Leave-one-cell-type-out counterfactual prediction of IFN-$\beta$ stimulation response across all 7 PBMC cell types (PCC $\uparrow$ / $R^2$ $\uparrow$):
+
+| Method | CD8T | CD14+Mono | FCGR3A+Mono | B | CD4T | Dendritic | NK | Average |
+| :--- | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: |
+| control | 0.94 / 0.88 | 0.75 / 0.32 | 0.78 / 0.38 | 0.91 / 0.81 | 0.94 / 0.87 | 0.79 / 0.51 | 0.93 / 0.84 | 0.86 / 0.66 |
+| scDisInFact | 0.85 / 0.43 | 0.77 / 0.47 | 0.71 / 0.43 | 0.84 / 0.45 | 0.85 / 0.43 | 0.76 / 0.47 | 0.79 / 0.44 | 0.80 / 0.45 |
+| MFM | 0.78 / 0.60 | 0.77 / 0.53 | 0.56 / 0.08 | 0.70 / 0.49 | 0.70 / 0.49 | 0.72 / 0.51 | 0.72 / 0.51 | 0.71 / 0.46 |
+| trVAE | *0.98* / 0.96 | 0.82 / 0.39 | 0.83 / 0.32 | 0.90 / 0.78 | **0.97** / *0.94* | 0.83 / 0.46 | **0.97** / **0.92** | 0.90 / 0.68 |
+| scGEN | 0.96 / 0.88 | *0.95* / 0.80 | **0.93** / **0.77** | *0.91* / *0.83* | 0.92 / 0.85 | **0.96** / **0.89** | 0.93 / 0.84 | *0.94* / *0.84* |
+| CellOT | **0.99** / **0.97** | **0.99** / **0.98** | 0.77 / 0.02 | 0.95 / 0.89 | **0.97** / *0.94* | **0.96** / *0.88* | *0.96* / *0.90* | *0.94* / 0.80 |
+| **SAVE** | *0.98* / **0.97** | *0.97* / *0.89* | *0.91* / *0.53* | **0.97** / **0.94** | *0.96* / **0.97** | **0.96** / 0.81 | *0.96* / *0.90* | **0.96** / **0.86** |
+
+<p align="center">
+  <img src="docs/assets/perturb_pbmc_ifn.png" width="96%" alt="Perturbation Prediction UMAP and Top DEG Violin Plots" />
+</p>
+<p align="center">
+  <em><strong>Figure 4. Perturbation prediction on PBMC IFN-$\beta$.</strong> Top: UMAP alignment against ground-truth stimulated cells across all 7 held-out cell types; Bottom: predicted expression distributions of key interferon-response markers (<code>ISG15</code>, <code>TNFSF10</code>).</em>
+</p>
+
+---
+
+### 4. Batch Effect Correction (Zero Task-Specific Training)
+
+Without explicit batch-integration objectives, SAVE's condition-aware latent space naturally disentangles technical batch variation from biological identity (scIB metrics $\uparrow$):
+
+| Method | Lung Bio | Lung Batch | Lung scIB | Heart Bio | Heart Batch | Heart scIB | PBMC Bio | PBMC Batch | PBMC scIB |
+| :--- | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: |
+| Scanorama | *0.70* | 0.88 | 0.77 | 0.72 | 0.82 | 0.76 | 0.71 | 0.93 | 0.80 |
+| Harmony | 0.65 | **0.93** | 0.76 | **0.76** | **0.89** | **0.81** | 0.71 | **0.95** | 0.80 |
+| scVI | 0.58 | 0.83 | 0.68 | 0.66 | 0.81 | 0.72 | 0.47 | 0.78 | 0.59 |
+| trVAE | 0.69 | 0.90 | *0.78* | 0.75 | 0.83 | 0.78 | **0.75** | 0.91 | *0.82* |
+| **SAVE** | **0.73** | **0.93** | **0.81** | **0.76** | *0.86* | *0.80* | **0.75** | **0.95** | **0.83** |
+
+---
+
+### 5. Training Efficiency & Block Size Scaling
+
+Measured on Heart (19,112 genes) on a single NVIDIA RTX 3090 (24GB VRAM):
+
+| Block Size ($K$) | Num. Blocks ($L$) | Training Time | Speedup | Heart WD $\downarrow$ | Heart MMD $\downarrow$ |
+| :--- | :---: | :---: | :---: | :---: | :---: |
+| `1` (naive gene-level) | 19,112 | 2391.2 min | 1.0× | — | — |
+| `1600` | 12 | 16.4 min | 146× | 9.64 | 0.65 |
+| **`3200` (default)** | **6** | **12.5 min** | **191×** | **8.30** | **0.63** |
+| `5600` | 4 | 9.0 min | 266× | 8.41 | 0.63 |
+
+> Removing Gene Block Attention (`SAVE w/o Att.`) degrades Heart generation performance from WD **8.30** / MMD **0.63** to WD 8.89 / MMD 0.65.
+
+---
+
+## Biological Interpretability
+
+Extracting condition-modulated attention weights from the Flow Matching Transformer on Heart (16,000 HVGs partitioned into 5 blocks of size 3,200) confirms that SAVE attends to biologically coherent pathways:
+
+<p align="center">
+  <img src="docs/assets/block_attention_heatmap.png" width="90%" alt="Condition-Modulated Block Attention Heatmap across Cell Types and Batches" />
+</p>
+
+- **Physiological Alignment:** Atrial and ventricular cardiomyocytes consistently attend to **Block 1** (Fatty Acid $\beta$-Oxidation), matching the heart's primary lipid metabolism signature across batches.
+- **Functional Specificity:** Endothelial cells and fibroblasts dynamically shift attention toward **Block 4** (Adenylate Cyclase-Activating GPCR Signaling) and **Block 3** (Protein Localization to Plasma Membrane), reflecting extracellular signaling and structural roles.
+- **Biological Filtering:** **Block 2** (Broad/General Cellular Functions without a dominant pathway) is universally suppressed across conditions, demonstrating autonomous filtering of non-discriminative gene programs.
+
+---
+
+## Released Modules & Repository Layout
+
+| Module | Status | Entrypoint |
+| :--- | :---: | :--- |
+| Gene Block Construction | Released | [`examples/gene_block_construction/run_pipeline.py`](examples/gene_block_construction/run_pipeline.py) |
+| Conditional Generation (VAE + OT FM) | Released | [`examples/conditional_generation/run_hca_formal.py`](examples/conditional_generation/run_hca_formal.py) / [`run_hca_smoke.py`](examples/conditional_generation/run_hca_smoke.py) |
+| Conditional Distribution Evaluation | Released | [`examples/conditional_distribution_evaluation/run_example.py`](examples/conditional_distribution_evaluation/run_example.py) |
+| Perturbation Prediction (Single & LOO) | Released | [`examples/perturbation_prediction/run_single.py`](examples/perturbation_prediction/run_single.py) / [`run_leave_one_out.py`](examples/perturbation_prediction/run_leave_one_out.py) |
+| Batch Effect Correction (scIB Benchmark) | Planned | — |
 
 ```text
 src/sc_save_public/   Reusable package code
 examples/             Runnable example entrypoints
 tests/                Public test coverage
+docs/assets/          Paper figures and visual assets
 ```
+
+---
 
 ## Environment Installation
 
@@ -49,6 +204,8 @@ Notes:
 - `flash-attn` is optional and is not required for the public examples. The released configs keep `is_flash_attn=False`.
 - The public generation path does not require `timm` or `torchvision`.
 
+---
+
 ## Input Data Requirements
 
 Recommended workflow:
@@ -75,7 +232,11 @@ If your dataset already contains padded genes such as `pad_0`, the generation pi
 
 For evaluation, the target and generated `.h5ad` files should represent the same gene space. If the gene names contain the same set in different orders, the evaluation script will reorder the generated object automatically.
 
-## Run Gene Block Construction
+---
+
+## Quick Start
+
+### Run Gene Block Construction
 
 Use this step to reorder embedding-covered genes into balanced semantic blocks and pad the output to a full block size. The default public setting is `gene_block_size=3200`.
 
@@ -115,9 +276,9 @@ Main outputs:
 - `var_metadata.csv`
 - `report.json`
 
-## Run Conditional Generation
+### Run Conditional Generation
 
-### Smoke Run
+#### Smoke Run
 
 Use this for a fast end-to-end check on a small subset:
 
@@ -145,7 +306,7 @@ Main outputs:
 - `target_z_vae.npy`
 - `report.json`
 
-### Formal Run
+#### Formal Run
 
 Use this when you want the public formal configuration and checkpoint reuse:
 
@@ -166,9 +327,9 @@ Main outputs:
 - `report.json`
 - `ckpt/`
 
-## Run Conditional Distribution Evaluation
+### Run Conditional Distribution Evaluation
 
-### Evaluate Smoke Outputs
+#### Evaluate Smoke Outputs
 
 ```bash
 uv run python examples/conditional_distribution_evaluation/run_example.py \
@@ -179,7 +340,7 @@ uv run python examples/conditional_distribution_evaluation/run_example.py \
   --device 0
 ```
 
-### Evaluate Formal Outputs
+#### Evaluate Formal Outputs
 
 ```bash
 uv run python examples/conditional_distribution_evaluation/run_example.py \
@@ -207,7 +368,7 @@ Evaluation outputs:
 - `per_condition_metrics.csv`
 - `report.json`
 
-## Run Perturbation Prediction
+### Run Perturbation Prediction
 
 Perturbation prediction holds out one cell type at a time, trains (or loads) a SAVE model on the remaining cells, predicts the stimulated expression from control cells, and evaluates against ground truth.
 
@@ -216,7 +377,7 @@ The input `.h5ad` should contain:
 - `adata.obs["cell_type"]` — cell-type labels (configurable via `--label-key`)
 - `adata.obs["condition"]` — with at least a control and a target value (configurable via `--condition-key`)
 
-### Single Cell Type
+#### Single Cell Type
 
 ```bash
 uv run python examples/perturbation_prediction/run_single.py \
@@ -232,7 +393,7 @@ Main outputs:
 - `train_scaler.pkl` — fitted MaxAbsScaler
 - `report.json` — parameters, timing, and evaluation metrics (R2, MSE, PCC)
 
-### Leave-One-Out Evaluation
+#### Leave-One-Out Evaluation
 
 Loop over all cell types in the dataset:
 
@@ -252,6 +413,8 @@ uv run python examples/perturbation_prediction/run_leave_one_out.py \
 
 In addition to per-cell-type outputs, the leave-one-out script produces a `summary.json` with per-cell-type and average R2, MSE, PCC, and prints a summary table to stdout.
 
+---
+
 ## Citation
 
 If you use this repository or the SAVE method in your work, please cite:
@@ -266,6 +429,8 @@ year={2026},
 url={https://openreview.net/forum?id=l7QEoK4uDP}
 }
 ```
+
+> Also available on [arXiv (2604.16776)](https://arxiv.org/abs/2604.16776) and [OpenReview](https://openreview.net/forum?id=l7QEoK4uDP).
 
 ## License
 
