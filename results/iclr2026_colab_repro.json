@@ -1,0 +1,1540 @@
+{
+  "metadata": {
+    "created_at_utc": "2026-11-22T06:18:12.141068+00:00",
+    "dry_run": false,
+    "data_root": "/content/save_iclr2026_work/data",
+    "output_root": "/content/save_iclr2026_work/outputs/iclr2026",
+    "git_branch": "reproduce-iclr2026",
+    "git_commit": "307c925",
+    "python_version": "3.13.16",
+    "pytorch_version": "2.14.1+cu130",
+    "cuda_version": "13.0",
+    "gpu_name": "NVIDIA RTX PRO 6000 Blackwell Server Edition",
+    "gpu_vram_gb": 94.97,
+    "prep_workers": 4,
+    "gpu_workers": "auto",
+    "cpu_workers": "auto",
+    "tables_completed": [
+      "table1",
+      "table2",
+      "table3",
+      "table4",
+      "table5"
+    ]
+  },
+  "paper_targets": {
+    "table1": {
+      "pbmc3k": {
+        "wd": 19.14,
+        "mmd": 1.8,
+        "mse": 0.08,
+        "pcc": 0.93,
+        "r2": 0.84
+      },
+      "dentategyrus": {
+        "wd": 9.16,
+        "mmd": 0.17,
+        "mse": 0.0,
+        "pcc": 0.99,
+        "r2": 0.97
+      },
+      "tabula_muris": {
+        "wd": 10.86,
+        "mmd": 0.04,
+        "mse": 0.0,
+        "pcc": 0.99,
+        "r2": 0.95
+      }
+    },
+    "table2": {
+      "heart": {
+        "wd": 8.3,
+        "mmd": 0.63,
+        "mse": 0.01,
+        "pcc": 0.88,
+        "r2": 0.63
+      },
+      "pbmc": {
+        "wd": 5.37,
+        "mmd": 0.29,
+        "mse": 0.02,
+        "pcc": 0.98,
+        "r2": 0.95
+      },
+      "lung_atlas": {
+        "wd": 4.37,
+        "mmd": 1.14,
+        "mse": 0.01,
+        "pcc": 0.91,
+        "r2": 0.84
+      }
+    },
+    "table3": {
+      "lung_cancer": {
+        "seen": {
+          "wd": 3.1,
+          "mmd": 1.06,
+          "mse": 0.01,
+          "pcc": 0.94,
+          "r2": 0.88
+        },
+        "unseen": {
+          "wd": 4.63,
+          "mmd": 2.11,
+          "mse": 0.04,
+          "pcc": 0.85,
+          "r2": 0.7
+        },
+        "macro": {
+          "wd": 3.15,
+          "mmd": 1.29
+        }
+      }
+    },
+    "table4": {
+      "lung_atlas_bec": {
+        "avg_bio": 0.734,
+        "avg_batch": 0.9309,
+        "scib_score": 0.8128,
+        "NMI_cluster/label": 0.8285,
+        "ARI_cluster/label": 0.734,
+        "ASW_label": 0.6395,
+        "ASW_label/batch": 0.8693,
+        "PCR_batch": 0.2134,
+        "graph_conn": 0.9926
+      },
+      "heart_bec": {
+        "avg_bio": 0.7574,
+        "avg_batch": 0.8596,
+        "scib_score": 0.7983,
+        "NMI_cluster/label": 0.7999,
+        "ARI_cluster/label": 0.8146,
+        "ASW_label": 0.6579,
+        "ASW_label/batch": 0.8576,
+        "PCR_batch": 0.2554,
+        "graph_conn": 0.8615
+      },
+      "pbmc_bec": {
+        "avg_bio": 0.7516,
+        "avg_batch": 0.9498,
+        "scib_score": 0.8309,
+        "NMI_cluster/label": 0.8637,
+        "ARI_cluster/label": 0.7952,
+        "ASW_label": 0.5958,
+        "ASW_label/batch": 0.9128,
+        "PCR_batch": 0.4996,
+        "graph_conn": 0.9868
+      }
+    },
+    "table5": {
+      "pbmc_ifn": {
+        "CD8T": {
+          "pcc": 0.98,
+          "r2": 0.97,
+          "wd": 4.01,
+          "mmd": 0.11,
+          "mse": 0.0
+        },
+        "CD14+Mono": {
+          "pcc": 0.97,
+          "r2": 0.89,
+          "wd": 5.03,
+          "mmd": 0.09,
+          "mse": 0.0
+        },
+        "FCGR3A+Mono": {
+          "pcc": 0.91,
+          "r2": 0.53,
+          "wd": 7.01,
+          "mmd": 0.22,
+          "mse": 0.01
+        },
+        "B": {
+          "pcc": 0.97,
+          "r2": 0.94,
+          "wd": 4.4,
+          "mmd": 0.17,
+          "mse": 0.0
+        },
+        "CD4T": {
+          "pcc": 0.96,
+          "r2": 0.97,
+          "wd": 3.98,
+          "mmd": 0.11,
+          "mse": 0.0
+        },
+        "Dendritic": {
+          "pcc": 0.96,
+          "r2": 0.81,
+          "wd": 6.55,
+          "mmd": 0.17,
+          "mse": 0.01
+        },
+        "NK": {
+          "pcc": 0.96,
+          "r2": 0.9,
+          "wd": 5.07,
+          "mmd": 0.09,
+          "mse": 0.0
+        },
+        "Average": {
+          "pcc": 0.96,
+          "r2": 0.86,
+          "wd": 5.15,
+          "mmd": 0.14,
+          "mse": 0.0
+        }
+      }
+    }
+  },
+  "runs": {
+    "table1": {
+      "pbmc3k": {
+        "status": "completed",
+        "generation_report": {
+          "task_name": "pbmc3k",
+          "data_path": "/content/save_iclr2026_work/data/processed/table1_single_cond/pbmc3k_train_GBS3200.h5ad",
+          "test_data_path": null,
+          "eval_split": "train",
+          "input_shape": [
+            2110,
+            9600
+          ],
+          "trimmed_gene_dim": 8573,
+          "device": "cuda:0",
+          "condition_cols": [
+            "cell_type"
+          ],
+          "vae_loaded_from_ckpt": false,
+          "fm_loaded_from_ckpt": false,
+          "vae_seconds": 35.315,
+          "fm_seconds": 58.209,
+          "vae_ckpt_path": "/content/save_iclr2026_work/outputs/iclr2026/table1/pbmc3k/ckpt/pbmc3k_VAE_512_enc64_GBS3200_head4.pt",
+          "fm_ckpt_path": "/content/save_iclr2026_work/outputs/iclr2026/table1/pbmc3k/ckpt/pbmc3k_fm_512_enc64_GBS3200_head4.pt",
+          "vae_epoch": 200,
+          "fm_epoch": 200,
+          "sample_mask_prob": 0.4,
+          "guidance_weights": 2.0,
+          "sample_steps": 20,
+          "gene_block_size": 3200,
+          "latent_block_size": 3200,
+          "num_heads": 4,
+          "model_kwargs": {
+            "gpu_num": 1,
+            "seed": 1202,
+            "is_ret_val": false,
+            "is_ret_model": true,
+            "npy_suffix": "_SAVE-B-release",
+            "is_data_scaled": true,
+            "fm_num_heads": 4,
+            "kl_scale": 0.5,
+            "hidden_dim": 64,
+            "enc_dim": 64,
+            "expand_dim": 512,
+            "enc_num_heads": 4,
+            "dec_num_heads": 4,
+            "enc_depth": 3,
+            "dec_depth": 3,
+            "enc_affine": true,
+            "enc_norm_type": "ln",
+            "dec_norm_init": true,
+            "dec_blk_type": "adaLN",
+            "gene_block_size": 3200,
+            "latent_block_size": 3200,
+            "is_flash_attn": false,
+            "lr": 0.0001,
+            "batch_size": 1024,
+            "weight_decay": 2.5e-05,
+            "iter": 3200,
+            "epoch": 200,
+            "is_lr_scheduler": true
+          },
+          "vae_setting": {
+            "kl_scale": 0.5,
+            "hidden_dim": 64,
+            "enc_dim": 64,
+            "expand_dim": 512,
+            "enc_num_heads": 4,
+            "dec_num_heads": 4,
+            "enc_depth": 3,
+            "dec_depth": 3,
+            "enc_affine": true,
+            "enc_norm_type": "ln",
+            "dec_norm_init": true,
+            "dec_blk_type": "adaLN",
+            "gene_block_size": 3200,
+            "latent_block_size": 3200,
+            "is_flash_attn": false
+          },
+          "train_setting": {
+            "lr": 0.0001,
+            "batch_size": 1024,
+            "weight_decay": 2.5e-05,
+            "iter": 3200,
+            "epoch": 200,
+            "is_lr_scheduler": true
+          },
+          "generation_seconds": 5.721,
+          "condition_group_count": 8,
+          "gen_shape": [
+            2110,
+            8573
+          ],
+          "target_shape": [
+            2110,
+            8573
+          ],
+          "gen_z_shape": [
+            2110,
+            3,
+            64
+          ],
+          "vae_z_shape": [
+            2110,
+            3,
+            64
+          ],
+          "generation_path": "/content/save_iclr2026_work/outputs/iclr2026/table1/pbmc3k/generation.h5ad",
+          "target_path": "/content/save_iclr2026_work/outputs/iclr2026/table1/pbmc3k/target.h5ad",
+          "gen_z_path": "/content/save_iclr2026_work/outputs/iclr2026/table1/pbmc3k/gen_z_fm.npy",
+          "vae_z_path": "/content/save_iclr2026_work/outputs/iclr2026/table1/pbmc3k/target_z_vae.npy"
+        },
+        "eval_report_path": "/content/save_iclr2026_work/outputs/iclr2026/table1/pbmc3k/eval/report.json",
+        "observed": {
+          "wd": 12.756039971640545,
+          "mmd": 0.47942638397216797,
+          "mse": 0.04055344726657495,
+          "pcc": 0.9427647590637207,
+          "r2": 0.8918505683541298
+        },
+        "target": {
+          "wd": 19.14,
+          "mmd": 1.8,
+          "mse": 0.08,
+          "pcc": 0.93,
+          "r2": 0.84
+        },
+        "delta": {
+          "wd": -6.38396,
+          "mmd": -1.320574,
+          "mse": -0.039447,
+          "pcc": 0.012765,
+          "r2": 0.051851
+        }
+      },
+      "dentategyrus": {
+        "status": "completed",
+        "generation_report": {
+          "task_name": "dentategyrus",
+          "data_path": "/content/save_iclr2026_work/data/processed/table1_single_cond/dentategyrus_train_GBS3200.h5ad",
+          "test_data_path": null,
+          "eval_split": "train",
+          "input_shape": [
+            14570,
+            19200
+          ],
+          "trimmed_gene_dim": 17002,
+          "device": "cuda:0",
+          "condition_cols": [
+            "cell_type"
+          ],
+          "vae_loaded_from_ckpt": false,
+          "fm_loaded_from_ckpt": false,
+          "vae_seconds": 198.218,
+          "fm_seconds": 332.418,
+          "vae_ckpt_path": "/content/save_iclr2026_work/outputs/iclr2026/table1/dentategyrus/ckpt/dentategyrus_VAE_512_enc64_GBS3200_head4.pt",
+          "fm_ckpt_path": "/content/save_iclr2026_work/outputs/iclr2026/table1/dentategyrus/ckpt/dentategyrus_fm_512_enc64_GBS3200_head4.pt",
+          "vae_epoch": 200,
+          "fm_epoch": 200,
+          "sample_mask_prob": 0.4,
+          "guidance_weights": 2.0,
+          "sample_steps": 20,
+          "gene_block_size": 3200,
+          "latent_block_size": 3200,
+          "num_heads": 4,
+          "model_kwargs": {
+            "gpu_num": 1,
+            "seed": 1202,
+            "is_ret_val": false,
+            "is_ret_model": true,
+            "npy_suffix": "_SAVE-B-release",
+            "is_data_scaled": true,
+            "fm_num_heads": 4,
+            "kl_scale": 0.5,
+            "hidden_dim": 64,
+            "enc_dim": 64,
+            "expand_dim": 512,
+            "enc_num_heads": 4,
+            "dec_num_heads": 4,
+            "enc_depth": 3,
+            "dec_depth": 3,
+            "enc_affine": true,
+            "enc_norm_type": "ln",
+            "dec_norm_init": true,
+            "dec_blk_type": "adaLN",
+            "gene_block_size": 3200,
+            "latent_block_size": 3200,
+            "is_flash_attn": false,
+            "lr": 0.0001,
+            "batch_size": 1024,
+            "weight_decay": 2.5e-05,
+            "iter": 3200,
+            "epoch": 200,
+            "is_lr_scheduler": true
+          },
+          "vae_setting": {
+            "kl_scale": 0.5,
+            "hidden_dim": 64,
+            "enc_dim": 64,
+            "expand_dim": 512,
+            "enc_num_heads": 4,
+            "dec_num_heads": 4,
+            "enc_depth": 3,
+            "dec_depth": 3,
+            "enc_affine": true,
+            "enc_norm_type": "ln",
+            "dec_norm_init": true,
+            "dec_blk_type": "adaLN",
+            "gene_block_size": 3200,
+            "latent_block_size": 3200,
+            "is_flash_attn": false
+          },
+          "train_setting": {
+            "lr": 0.0001,
+            "batch_size": 1024,
+            "weight_decay": 2.5e-05,
+            "iter": 3200,
+            "epoch": 200,
+            "is_lr_scheduler": true
+          },
+          "generation_seconds": 25.627,
+          "condition_group_count": 14,
+          "gen_shape": [
+            14570,
+            17002
+          ],
+          "target_shape": [
+            14570,
+            17002
+          ],
+          "gen_z_shape": [
+            14570,
+            6,
+            64
+          ],
+          "vae_z_shape": [
+            14570,
+            6,
+            64
+          ],
+          "generation_path": "/content/save_iclr2026_work/outputs/iclr2026/table1/dentategyrus/generation.h5ad",
+          "target_path": "/content/save_iclr2026_work/outputs/iclr2026/table1/dentategyrus/target.h5ad",
+          "gen_z_path": "/content/save_iclr2026_work/outputs/iclr2026/table1/dentategyrus/gen_z_fm.npy",
+          "vae_z_path": "/content/save_iclr2026_work/outputs/iclr2026/table1/dentategyrus/target_z_vae.npy"
+        },
+        "eval_report_path": "/content/save_iclr2026_work/outputs/iclr2026/table1/dentategyrus/eval/report.json",
+        "observed": {
+          "wd": 8.08437776147559,
+          "mmd": 0.10548092637743268,
+          "mse": 0.004849213071533346,
+          "pcc": 0.9910133481025696,
+          "r2": 0.973594205720084
+        },
+        "target": {
+          "wd": 9.16,
+          "mmd": 0.17,
+          "mse": 0.0,
+          "pcc": 0.99,
+          "r2": 0.97
+        },
+        "delta": {
+          "wd": -1.075622,
+          "mmd": -0.064519,
+          "mse": 0.004849,
+          "pcc": 0.001013,
+          "r2": 0.003594
+        }
+      },
+      "tabula_muris": {
+        "status": "completed",
+        "generation_report": {
+          "task_name": "tabula_muris",
+          "data_path": "/content/save_iclr2026_work/data/processed/table1_single_cond/tabula_muris_train_GBS3200.h5ad",
+          "test_data_path": null,
+          "eval_split": "train",
+          "input_shape": [
+            196311,
+            22400
+          ],
+          "trimmed_gene_dim": 19734,
+          "device": "cuda:0",
+          "condition_cols": [
+            "cell_type"
+          ],
+          "vae_loaded_from_ckpt": false,
+          "fm_loaded_from_ckpt": false,
+          "vae_seconds": 3017.896,
+          "fm_seconds": 1320.875,
+          "vae_ckpt_path": "/content/save_iclr2026_work/outputs/iclr2026/table1/tabula_muris/ckpt/tabula_muris_VAE_512_enc64_GBS3200_head4.pt",
+          "fm_ckpt_path": "/content/save_iclr2026_work/outputs/iclr2026/table1/tabula_muris/ckpt/tabula_muris_fm_512_enc64_GBS3200_head4.pt",
+          "vae_epoch": 200,
+          "fm_epoch": 200,
+          "sample_mask_prob": 0.4,
+          "guidance_weights": 2.0,
+          "sample_steps": 20,
+          "gene_block_size": 3200,
+          "latent_block_size": 3200,
+          "num_heads": 4,
+          "model_kwargs": {
+            "gpu_num": 1,
+            "seed": 1202,
+            "is_ret_val": false,
+            "is_ret_model": true,
+            "npy_suffix": "_SAVE-B-release",
+            "is_data_scaled": true,
+            "fm_num_heads": 4,
+            "kl_scale": 0.5,
+            "hidden_dim": 64,
+            "enc_dim": 64,
+            "expand_dim": 512,
+            "enc_num_heads": 4,
+            "dec_num_heads": 4,
+            "enc_depth": 3,
+            "dec_depth": 3,
+            "enc_affine": true,
+            "enc_norm_type": "ln",
+            "dec_norm_init": true,
+            "dec_blk_type": "adaLN",
+            "gene_block_size": 3200,
+            "latent_block_size": 3200,
+            "is_flash_attn": false,
+            "lr": 0.0001,
+            "batch_size": 1024,
+            "weight_decay": 2.5e-05,
+            "iter": 3200,
+            "epoch": 200,
+            "is_lr_scheduler": true
+          },
+          "vae_setting": {
+            "kl_scale": 0.5,
+            "hidden_dim": 64,
+            "enc_dim": 64,
+            "expand_dim": 512,
+            "enc_num_heads": 4,
+            "dec_num_heads": 4,
+            "enc_depth": 3,
+            "dec_depth": 3,
+            "enc_affine": true,
+            "enc_norm_type": "ln",
+            "dec_norm_init": true,
+            "dec_blk_type": "adaLN",
+            "gene_block_size": 3200,
+            "latent_block_size": 3200,
+            "is_flash_attn": false
+          },
+          "train_setting": {
+            "lr": 0.0001,
+            "batch_size": 1024,
+            "weight_decay": 2.5e-05,
+            "iter": 3200,
+            "epoch": 200,
+            "is_lr_scheduler": true
+          },
+          "generation_seconds": 179.776,
+          "condition_group_count": 16,
+          "gen_shape": [
+            196311,
+            19734
+          ],
+          "target_shape": [
+            196311,
+            19734
+          ],
+          "gen_z_shape": [
+            196311,
+            7,
+            64
+          ],
+          "vae_z_shape": [
+            196311,
+            7,
+            64
+          ],
+          "generation_path": "/content/save_iclr2026_work/outputs/iclr2026/table1/tabula_muris/generation.h5ad",
+          "target_path": "/content/save_iclr2026_work/outputs/iclr2026/table1/tabula_muris/target.h5ad",
+          "gen_z_path": "/content/save_iclr2026_work/outputs/iclr2026/table1/tabula_muris/gen_z_fm.npy",
+          "vae_z_path": "/content/save_iclr2026_work/outputs/iclr2026/table1/tabula_muris/target_z_vae.npy"
+        },
+        "eval_report_path": "/content/save_iclr2026_work/outputs/iclr2026/table1/tabula_muris/eval/report.json",
+        "observed": {
+          "wd": 10.650092700969475,
+          "mmd": 0.03555239737033844,
+          "mse": 0.004909473755105864,
+          "pcc": 0.989177942276001,
+          "r2": 0.9520004913210869
+        },
+        "target": {
+          "wd": 10.86,
+          "mmd": 0.04,
+          "mse": 0.0,
+          "pcc": 0.99,
+          "r2": 0.95
+        },
+        "delta": {
+          "wd": -0.209907,
+          "mmd": -0.004448,
+          "mse": 0.004909,
+          "pcc": -0.000822,
+          "r2": 0.002
+        }
+      }
+    },
+    "table2": {
+      "heart": {
+        "status": "completed",
+        "generation_report": {
+          "task_name": "heart",
+          "data_path": "/content/save_iclr2026_work/data/processed/table2_dual_cond/heart_GBS3200.h5ad",
+          "test_data_path": null,
+          "eval_split": "train",
+          "input_shape": [
+            20000,
+            28800
+          ],
+          "trimmed_gene_dim": 26662,
+          "device": "cuda:0",
+          "condition_cols": [
+            "batch",
+            "cell_type"
+          ],
+          "vae_loaded_from_ckpt": false,
+          "fm_loaded_from_ckpt": false,
+          "vae_seconds": 109.034,
+          "fm_seconds": 131.504,
+          "vae_ckpt_path": "/content/save_iclr2026_work/outputs/iclr2026/table2/heart/ckpt/heart_VAE_512_enc64_GBS3200_head4.pt",
+          "fm_ckpt_path": "/content/save_iclr2026_work/outputs/iclr2026/table2/heart/ckpt/heart_fm_512_enc64_GBS3200_head4.pt",
+          "vae_epoch": 200,
+          "fm_epoch": 200,
+          "sample_mask_prob": 0.4,
+          "guidance_weights": 2.0,
+          "sample_steps": 20,
+          "gene_block_size": 3200,
+          "latent_block_size": 3200,
+          "num_heads": 4,
+          "model_kwargs": {
+            "gpu_num": 1,
+            "seed": 1202,
+            "is_ret_val": false,
+            "is_ret_model": true,
+            "npy_suffix": "_SAVE-B-release",
+            "is_data_scaled": true,
+            "fm_num_heads": 4,
+            "kl_scale": 0.5,
+            "hidden_dim": 64,
+            "enc_dim": 64,
+            "expand_dim": 512,
+            "enc_num_heads": 4,
+            "dec_num_heads": 4,
+            "enc_depth": 3,
+            "dec_depth": 3,
+            "enc_affine": true,
+            "enc_norm_type": "ln",
+            "dec_norm_init": true,
+            "dec_blk_type": "adaLN",
+            "gene_block_size": 3200,
+            "latent_block_size": 3200,
+            "is_flash_attn": false,
+            "lr": 0.0001,
+            "batch_size": 1024,
+            "weight_decay": 2.5e-05,
+            "iter": 3200,
+            "epoch": 200,
+            "is_lr_scheduler": true
+          },
+          "vae_setting": {
+            "kl_scale": 0.5,
+            "hidden_dim": 64,
+            "enc_dim": 64,
+            "expand_dim": 512,
+            "enc_num_heads": 4,
+            "dec_num_heads": 4,
+            "enc_depth": 3,
+            "dec_depth": 3,
+            "enc_affine": true,
+            "enc_norm_type": "ln",
+            "dec_norm_init": true,
+            "dec_blk_type": "adaLN",
+            "gene_block_size": 3200,
+            "latent_block_size": 3200,
+            "is_flash_attn": false
+          },
+          "train_setting": {
+            "lr": 0.0001,
+            "batch_size": 1024,
+            "weight_decay": 2.5e-05,
+            "iter": 3200,
+            "epoch": 200,
+            "is_lr_scheduler": true
+          },
+          "generation_seconds": 52.941,
+          "condition_group_count": 166,
+          "gen_shape": [
+            20000,
+            26662
+          ],
+          "target_shape": [
+            20000,
+            26662
+          ],
+          "gen_z_shape": [
+            20000,
+            9,
+            64
+          ],
+          "vae_z_shape": [
+            20000,
+            9,
+            64
+          ],
+          "generation_path": "/content/save_iclr2026_work/outputs/iclr2026/table2/heart/generation.h5ad",
+          "target_path": "/content/save_iclr2026_work/outputs/iclr2026/table2/heart/target.h5ad",
+          "gen_z_path": "/content/save_iclr2026_work/outputs/iclr2026/table2/heart/gen_z_fm.npy",
+          "vae_z_path": "/content/save_iclr2026_work/outputs/iclr2026/table2/heart/target_z_vae.npy"
+        },
+        "eval_report_path": "/content/save_iclr2026_work/outputs/iclr2026/table2/heart/eval/report.json",
+        "observed": {
+          "wd": 8.829795678451154,
+          "mmd": 0.6416041578154966,
+          "mse": 0.01581938864546828,
+          "pcc": 0.8709580898284912,
+          "r2": 0.5828194611043815
+        },
+        "target": {
+          "wd": 8.3,
+          "mmd": 0.63,
+          "mse": 0.01,
+          "pcc": 0.88,
+          "r2": 0.63
+        },
+        "delta": {
+          "wd": 0.529796,
+          "mmd": 0.011604,
+          "mse": 0.005819,
+          "pcc": -0.009042,
+          "r2": -0.047181
+        }
+      },
+      "pbmc": {
+        "status": "completed",
+        "generation_report": {
+          "task_name": "pbmc",
+          "data_path": "/content/save_iclr2026_work/data/processed/table2_dual_cond/pbmc_GBS3200.h5ad",
+          "test_data_path": null,
+          "eval_split": "train",
+          "input_shape": [
+            33506,
+            12800
+          ],
+          "trimmed_gene_dim": 10851,
+          "device": "cuda:0",
+          "condition_cols": [
+            "batch",
+            "cell_type"
+          ],
+          "vae_loaded_from_ckpt": false,
+          "fm_loaded_from_ckpt": false,
+          "vae_seconds": 432.04,
+          "fm_seconds": 744.731,
+          "vae_ckpt_path": "/content/save_iclr2026_work/outputs/iclr2026/table2/pbmc/ckpt/pbmc_VAE_512_enc64_GBS3200_head4.pt",
+          "fm_ckpt_path": "/content/save_iclr2026_work/outputs/iclr2026/table2/pbmc/ckpt/pbmc_fm_512_enc64_GBS3200_head4.pt",
+          "vae_epoch": 200,
+          "fm_epoch": 200,
+          "sample_mask_prob": 0.4,
+          "guidance_weights": 2.0,
+          "sample_steps": 20,
+          "gene_block_size": 3200,
+          "latent_block_size": 3200,
+          "num_heads": 4,
+          "model_kwargs": {
+            "gpu_num": 1,
+            "seed": 1202,
+            "is_ret_val": false,
+            "is_ret_model": true,
+            "npy_suffix": "_SAVE-B-release",
+            "is_data_scaled": true,
+            "fm_num_heads": 4,
+            "kl_scale": 0.5,
+            "hidden_dim": 64,
+            "enc_dim": 64,
+            "expand_dim": 512,
+            "enc_num_heads": 4,
+            "dec_num_heads": 4,
+            "enc_depth": 3,
+            "dec_depth": 3,
+            "enc_affine": true,
+            "enc_norm_type": "ln",
+            "dec_norm_init": true,
+            "dec_blk_type": "adaLN",
+            "gene_block_size": 3200,
+            "latent_block_size": 3200,
+            "is_flash_attn": false,
+            "lr": 0.0001,
+            "batch_size": 1024,
+            "weight_decay": 2.5e-05,
+            "iter": 3200,
+            "epoch": 200,
+            "is_lr_scheduler": true
+          },
+          "vae_setting": {
+            "kl_scale": 0.5,
+            "hidden_dim": 64,
+            "enc_dim": 64,
+            "expand_dim": 512,
+            "enc_num_heads": 4,
+            "dec_num_heads": 4,
+            "enc_depth": 3,
+            "dec_depth": 3,
+            "enc_affine": true,
+            "enc_norm_type": "ln",
+            "dec_norm_init": true,
+            "dec_blk_type": "adaLN",
+            "gene_block_size": 3200,
+            "latent_block_size": 3200,
+            "is_flash_attn": false
+          },
+          "train_setting": {
+            "lr": 0.0001,
+            "batch_size": 1024,
+            "weight_decay": 2.5e-05,
+            "iter": 3200,
+            "epoch": 200,
+            "is_lr_scheduler": true
+          },
+          "generation_seconds": 106.092,
+          "condition_group_count": 107,
+          "gen_shape": [
+            33506,
+            10851
+          ],
+          "target_shape": [
+            33506,
+            10851
+          ],
+          "gen_z_shape": [
+            33506,
+            4,
+            64
+          ],
+          "vae_z_shape": [
+            33506,
+            4,
+            64
+          ],
+          "generation_path": "/content/save_iclr2026_work/outputs/iclr2026/table2/pbmc/generation.h5ad",
+          "target_path": "/content/save_iclr2026_work/outputs/iclr2026/table2/pbmc/target.h5ad",
+          "gen_z_path": "/content/save_iclr2026_work/outputs/iclr2026/table2/pbmc/gen_z_fm.npy",
+          "vae_z_path": "/content/save_iclr2026_work/outputs/iclr2026/table2/pbmc/target_z_vae.npy"
+        },
+        "eval_report_path": "/content/save_iclr2026_work/outputs/iclr2026/table2/pbmc/eval/report.json",
+        "observed": {
+          "wd": 5.385111645364152,
+          "mmd": 0.3026687720111597,
+          "mse": 0.006143592398670267,
+          "pcc": 0.9857374429702759,
+          "r2": 0.9689488009871724
+        },
+        "target": {
+          "wd": 5.37,
+          "mmd": 0.29,
+          "mse": 0.02,
+          "pcc": 0.98,
+          "r2": 0.95
+        },
+        "delta": {
+          "wd": 0.015112,
+          "mmd": 0.012669,
+          "mse": -0.013856,
+          "pcc": 0.005737,
+          "r2": 0.018949
+        }
+      },
+      "lung_atlas": {
+        "status": "completed",
+        "generation_report": {
+          "task_name": "lung_atlas",
+          "data_path": "/content/save_iclr2026_work/data/processed/table2_dual_cond/lung_atlas_GBS3200.h5ad",
+          "test_data_path": null,
+          "eval_split": "train",
+          "input_shape": [
+            32472,
+            16000
+          ],
+          "trimmed_gene_dim": 15148,
+          "device": "cuda:0",
+          "condition_cols": [
+            "batch",
+            "cell_type"
+          ],
+          "vae_loaded_from_ckpt": false,
+          "fm_loaded_from_ckpt": false,
+          "vae_seconds": 468.79,
+          "fm_seconds": 702.872,
+          "vae_ckpt_path": "/content/save_iclr2026_work/outputs/iclr2026/table2/lung_atlas/ckpt/lung_atlas_VAE_512_enc64_GBS3200_head4.pt",
+          "fm_ckpt_path": "/content/save_iclr2026_work/outputs/iclr2026/table2/lung_atlas/ckpt/lung_atlas_fm_512_enc64_GBS3200_head4.pt",
+          "vae_epoch": 200,
+          "fm_epoch": 200,
+          "sample_mask_prob": 0.4,
+          "guidance_weights": 2.0,
+          "sample_steps": 20,
+          "gene_block_size": 3200,
+          "latent_block_size": 3200,
+          "num_heads": 4,
+          "model_kwargs": {
+            "gpu_num": 1,
+            "seed": 1202,
+            "is_ret_val": false,
+            "is_ret_model": true,
+            "npy_suffix": "_SAVE-B-release",
+            "is_data_scaled": true,
+            "fm_num_heads": 4,
+            "kl_scale": 0.5,
+            "hidden_dim": 64,
+            "enc_dim": 64,
+            "expand_dim": 512,
+            "enc_num_heads": 4,
+            "dec_num_heads": 4,
+            "enc_depth": 3,
+            "dec_depth": 3,
+            "enc_affine": true,
+            "enc_norm_type": "ln",
+            "dec_norm_init": true,
+            "dec_blk_type": "adaLN",
+            "gene_block_size": 3200,
+            "latent_block_size": 3200,
+            "is_flash_attn": false,
+            "lr": 0.0001,
+            "batch_size": 1024,
+            "weight_decay": 2.5e-05,
+            "iter": 3200,
+            "epoch": 200,
+            "is_lr_scheduler": true
+          },
+          "vae_setting": {
+            "kl_scale": 0.5,
+            "hidden_dim": 64,
+            "enc_dim": 64,
+            "expand_dim": 512,
+            "enc_num_heads": 4,
+            "dec_num_heads": 4,
+            "enc_depth": 3,
+            "dec_depth": 3,
+            "enc_affine": true,
+            "enc_norm_type": "ln",
+            "dec_norm_init": true,
+            "dec_blk_type": "adaLN",
+            "gene_block_size": 3200,
+            "latent_block_size": 3200,
+            "is_flash_attn": false
+          },
+          "train_setting": {
+            "lr": 0.0001,
+            "batch_size": 1024,
+            "weight_decay": 2.5e-05,
+            "iter": 3200,
+            "epoch": 200,
+            "is_lr_scheduler": true
+          },
+          "generation_seconds": 133.939,
+          "condition_group_count": 183,
+          "gen_shape": [
+            32472,
+            15148
+          ],
+          "target_shape": [
+            32472,
+            15148
+          ],
+          "gen_z_shape": [
+            32472,
+            5,
+            64
+          ],
+          "vae_z_shape": [
+            32472,
+            5,
+            64
+          ],
+          "generation_path": "/content/save_iclr2026_work/outputs/iclr2026/table2/lung_atlas/generation.h5ad",
+          "target_path": "/content/save_iclr2026_work/outputs/iclr2026/table2/lung_atlas/target.h5ad",
+          "gen_z_path": "/content/save_iclr2026_work/outputs/iclr2026/table2/lung_atlas/gen_z_fm.npy",
+          "vae_z_path": "/content/save_iclr2026_work/outputs/iclr2026/table2/lung_atlas/target_z_vae.npy"
+        },
+        "eval_report_path": "/content/save_iclr2026_work/outputs/iclr2026/table2/lung_atlas/eval/report.json",
+        "observed": {
+          "wd": 4.417445745234945,
+          "mmd": 1.1578704815744703,
+          "mse": 0.008945345443952065,
+          "pcc": 0.9121463894844055,
+          "r2": 0.8308047815098789
+        },
+        "target": {
+          "wd": 4.37,
+          "mmd": 1.14,
+          "mse": 0.01,
+          "pcc": 0.91,
+          "r2": 0.84
+        },
+        "delta": {
+          "wd": 0.047446,
+          "mmd": 0.01787,
+          "mse": -0.001055,
+          "pcc": 0.002146,
+          "r2": -0.009195
+        }
+      }
+    },
+    "table3": {
+      "lung_cancer": {
+        "status": "completed",
+        "generation_report": {
+          "task_name": "lung_cancer",
+          "data_path": "/content/save_iclr2026_work/data/processed/table3_multi_cond/lung_cancer_hvg2000_GBS400_train.h5ad",
+          "test_data_path": "/content/save_iclr2026_work/data/processed/table3_multi_cond/lung_cancer_hvg2000_GBS400_test.h5ad",
+          "eval_split": "all",
+          "input_shape": [
+            113830,
+            2000
+          ],
+          "trimmed_gene_dim": 2000,
+          "device": "cuda:0",
+          "condition_cols": [
+            "assay",
+            "development_stage",
+            "disease",
+            "uicc_stage",
+            "cell_type"
+          ],
+          "vae_loaded_from_ckpt": false,
+          "fm_loaded_from_ckpt": false,
+          "vae_seconds": 1273.863,
+          "fm_seconds": 1447.299,
+          "vae_ckpt_path": "/content/save_iclr2026_work/outputs/iclr2026/table3/lung_cancer/ckpt/lung_cancer_VAE_512_enc64_GBS400_head4.pt",
+          "fm_ckpt_path": "/content/save_iclr2026_work/outputs/iclr2026/table3/lung_cancer/ckpt/lung_cancer_fm_512_enc64_GBS400_head4.pt",
+          "vae_epoch": 200,
+          "fm_epoch": 200,
+          "sample_mask_prob": 0.0,
+          "guidance_weights": 2.0,
+          "sample_steps": 20,
+          "gene_block_size": 400,
+          "latent_block_size": 400,
+          "num_heads": 4,
+          "model_kwargs": {
+            "gpu_num": 1,
+            "seed": 1202,
+            "is_ret_val": false,
+            "is_ret_model": true,
+            "npy_suffix": "_SAVE-B-release",
+            "is_data_scaled": true,
+            "fm_num_heads": 4,
+            "kl_scale": 0.5,
+            "hidden_dim": 64,
+            "enc_dim": 64,
+            "expand_dim": 512,
+            "enc_num_heads": 4,
+            "dec_num_heads": 4,
+            "enc_depth": 3,
+            "dec_depth": 3,
+            "enc_affine": true,
+            "enc_norm_type": "ln",
+            "dec_norm_init": true,
+            "dec_blk_type": "adaLN",
+            "gene_block_size": 400,
+            "latent_block_size": 400,
+            "is_flash_attn": false,
+            "lr": 0.0001,
+            "batch_size": 1024,
+            "weight_decay": 2.5e-05,
+            "iter": 3200,
+            "epoch": 200,
+            "is_lr_scheduler": true
+          },
+          "vae_setting": {
+            "kl_scale": 0.5,
+            "hidden_dim": 64,
+            "enc_dim": 64,
+            "expand_dim": 512,
+            "enc_num_heads": 4,
+            "dec_num_heads": 4,
+            "enc_depth": 3,
+            "dec_depth": 3,
+            "enc_affine": true,
+            "enc_norm_type": "ln",
+            "dec_norm_init": true,
+            "dec_blk_type": "adaLN",
+            "gene_block_size": 400,
+            "latent_block_size": 400,
+            "is_flash_attn": false
+          },
+          "train_setting": {
+            "lr": 0.0001,
+            "batch_size": 1024,
+            "weight_decay": 2.5e-05,
+            "iter": 3200,
+            "epoch": 200,
+            "is_lr_scheduler": true
+          },
+          "generation_seconds": 364.488,
+          "condition_group_count": 619,
+          "gen_shape": [
+            114692,
+            2000
+          ],
+          "target_shape": [
+            114692,
+            2000
+          ],
+          "gen_z_shape": [
+            114692,
+            5,
+            64
+          ],
+          "vae_z_shape": [
+            114692,
+            5,
+            64
+          ],
+          "generation_path": "/content/save_iclr2026_work/outputs/iclr2026/table3/lung_cancer/generation.h5ad",
+          "target_path": "/content/save_iclr2026_work/outputs/iclr2026/table3/lung_cancer/target.h5ad",
+          "gen_z_path": "/content/save_iclr2026_work/outputs/iclr2026/table3/lung_cancer/gen_z_fm.npy",
+          "vae_z_path": "/content/save_iclr2026_work/outputs/iclr2026/table3/lung_cancer/target_z_vae.npy"
+        },
+        "eval_report_path": "/content/save_iclr2026_work/outputs/iclr2026/table3/lung_cancer/eval/report.json",
+        "observed": {
+          "seen": {
+            "wd": 3.066140233913389,
+            "mmd": 1.0761956640997448,
+            "mse": 0.011746431946448865,
+            "pcc": 0.9442507028579712,
+            "r2": 0.8811708737064052
+          },
+          "unseen": {
+            "wd": 5.385468856919624,
+            "mmd": 2.1557391307972096,
+            "mse": 0.0441090795211494,
+            "pcc": 0.8168365955352783,
+            "r2": 0.64665080220611
+          },
+          "macro": {
+            "wd": 3.229897569485057,
+            "mmd": 1.3057198955330007
+          }
+        },
+        "target": {
+          "seen": {
+            "wd": 3.1,
+            "mmd": 1.06,
+            "mse": 0.01,
+            "pcc": 0.94,
+            "r2": 0.88
+          },
+          "unseen": {
+            "wd": 4.63,
+            "mmd": 2.11,
+            "mse": 0.04,
+            "pcc": 0.85,
+            "r2": 0.7
+          },
+          "macro": {
+            "wd": 3.15,
+            "mmd": 1.29
+          }
+        },
+        "delta": {
+          "seen": {
+            "wd": -0.03386,
+            "mmd": 0.016196,
+            "mse": 0.001746,
+            "pcc": 0.004251,
+            "r2": 0.001171
+          },
+          "unseen": {
+            "wd": 0.755469,
+            "mmd": 0.045739,
+            "mse": 0.004109,
+            "pcc": -0.033163,
+            "r2": -0.053349
+          },
+          "macro": {
+            "wd": 0.079898,
+            "mmd": 0.01572
+          }
+        }
+      }
+    },
+    "table4": {
+      "heart_bec": {
+        "status": "completed",
+        "report_path": "/content/save_iclr2026_work/outputs/iclr2026/table4/heart_bec/report.json",
+        "scib_csv_path": "/content/save_iclr2026_work/outputs/iclr2026/table4/heart_bec/scib_eval.csv",
+        "observed": {
+          "NMI_cluster/label": 0.7985959208125509,
+          "ARI_cluster/label": 0.8138405583536698,
+          "ASW_label": 0.6492399999073574,
+          "ASW_label/batch": 0.849730121237891,
+          "PCR_batch": 0.16400105818822314,
+          "graph_conn": 0.8982508862236641,
+          "avg_bio": 0.7538921596911926,
+          "avg_batch": 0.8739905037307777,
+          "scib_score": 0.8019314973070265
+        },
+        "target": {
+          "avg_bio": 0.7574,
+          "avg_batch": 0.8596,
+          "scib_score": 0.7983,
+          "NMI_cluster/label": 0.7999,
+          "ARI_cluster/label": 0.8146,
+          "ASW_label": 0.6579,
+          "ASW_label/batch": 0.8576,
+          "PCR_batch": 0.2554,
+          "graph_conn": 0.8615
+        },
+        "delta": {
+          "avg_bio": -0.003508,
+          "avg_batch": 0.014391,
+          "scib_score": 0.003631,
+          "NMI_cluster/label": -0.001304,
+          "ARI_cluster/label": -0.000759,
+          "ASW_label": -0.00866,
+          "ASW_label/batch": -0.00787,
+          "PCR_batch": -0.091399,
+          "graph_conn": 0.036751
+        }
+      },
+      "pbmc_bec": {
+        "status": "completed",
+        "report_path": "/content/save_iclr2026_work/outputs/iclr2026/table4/pbmc_bec/report.json",
+        "scib_csv_path": "/content/save_iclr2026_work/outputs/iclr2026/table4/pbmc_bec/scib_eval.csv",
+        "observed": {
+          "NMI_cluster/label": 0.8384512656319766,
+          "ARI_cluster/label": 0.7476176647506019,
+          "ASW_label": 0.6128290474414826,
+          "ASW_label/batch": 0.878898686170578,
+          "PCR_batch": 0.5709453367708395,
+          "graph_conn": 0.9844596440080661,
+          "avg_bio": 0.7329659926080204,
+          "avg_batch": 0.931679165089322,
+          "scib_score": 0.8124512616005412
+        },
+        "target": {
+          "avg_bio": 0.7516,
+          "avg_batch": 0.9498,
+          "scib_score": 0.8309,
+          "NMI_cluster/label": 0.8637,
+          "ARI_cluster/label": 0.7952,
+          "ASW_label": 0.5958,
+          "ASW_label/batch": 0.9128,
+          "PCR_batch": 0.4996,
+          "graph_conn": 0.9868
+        },
+        "delta": {
+          "avg_bio": -0.018634,
+          "avg_batch": -0.018121,
+          "scib_score": -0.018449,
+          "NMI_cluster/label": -0.025249,
+          "ARI_cluster/label": -0.047582,
+          "ASW_label": 0.017029,
+          "ASW_label/batch": -0.033901,
+          "PCR_batch": 0.071345,
+          "graph_conn": -0.00234
+        }
+      },
+      "lung_atlas_bec": {
+        "status": "completed",
+        "report_path": "/content/save_iclr2026_work/outputs/iclr2026/table4/lung_atlas_bec/report.json",
+        "scib_csv_path": "/content/save_iclr2026_work/outputs/iclr2026/table4/lung_atlas_bec/scib_eval.csv",
+        "observed": {
+          "NMI_cluster/label": 0.8256880046828504,
+          "ARI_cluster/label": 0.7186405349274627,
+          "ASW_label": 0.6582812964916229,
+          "ASW_label/batch": 0.8542421422898769,
+          "PCR_batch": 0.17976042297918066,
+          "graph_conn": 0.9918781477460586,
+          "avg_bio": 0.7342032787006453,
+          "avg_batch": 0.923060145017968,
+          "scib_score": 0.8097460252275744
+        },
+        "target": {
+          "avg_bio": 0.734,
+          "avg_batch": 0.9309,
+          "scib_score": 0.8128,
+          "NMI_cluster/label": 0.8285,
+          "ARI_cluster/label": 0.734,
+          "ASW_label": 0.6395,
+          "ASW_label/batch": 0.8693,
+          "PCR_batch": 0.2134,
+          "graph_conn": 0.9926
+        },
+        "delta": {
+          "avg_bio": 0.000203,
+          "avg_batch": -0.00784,
+          "scib_score": -0.003054,
+          "NMI_cluster/label": -0.002812,
+          "ARI_cluster/label": -0.015359,
+          "ASW_label": 0.018781,
+          "ASW_label/batch": -0.015058,
+          "PCR_batch": -0.03364,
+          "graph_conn": -0.000722
+        }
+      }
+    },
+    "table5": {
+      "pbmc_ifn": {
+        "status": "completed",
+        "summary_path": "/content/save_iclr2026_work/outputs/iclr2026/table5/pbmc_ifn/summary.json",
+        "observed": {
+          "CD8T": {
+            "r2": 0.964229166507721,
+            "mse": 0.0011576139368116856,
+            "pcc": 0.983985185623169,
+            "wd": 4.057002849165924,
+            "mmd": 0.032237815856933597
+          },
+          "CD14+Mono": {
+            "r2": 0.70975661277771,
+            "mse": 0.01889680325984955,
+            "pcc": 0.9092944860458374,
+            "wd": 7.681967649316604,
+            "mmd": 0.2840921640396118
+          },
+          "FCGR3A+Mono": {
+            "r2": 0.561247706413269,
+            "mse": 0.020590251311659813,
+            "pcc": 0.9090299606323242,
+            "wd": 8.018266010480026,
+            "mmd": 0.29687798023223877
+          },
+          "B": {
+            "r2": 0.866449773311615,
+            "mse": 0.004254264757037163,
+            "pcc": 0.9491215944290161,
+            "wd": 4.756469100269124,
+            "mmd": 0.08616626262664795
+          },
+          "CD4T": {
+            "r2": 0.9311676025390625,
+            "mse": 0.0020495883654803038,
+            "pcc": 0.9665259122848511,
+            "wd": 3.5652255086161793,
+            "mmd": 0.049849867820739746
+          },
+          "Dendritic": {
+            "r2": 0.7232533693313599,
+            "mse": 0.013666193000972271,
+            "pcc": 0.9245567321777344,
+            "wd": 7.358712477953183,
+            "mmd": 0.21807174682617186
+          },
+          "NK": {
+            "r2": 0.8952239155769348,
+            "mse": 0.0035789068788290024,
+            "pcc": 0.960456907749176,
+            "wd": 4.969922535167548,
+            "mmd": 0.07290658950805665
+          },
+          "Average": {
+            "r2": 0.807332592351096,
+            "mse": 0.009170517358662826,
+            "pcc": 0.9432815398488726,
+            "wd": 5.7725094472812275,
+            "mmd": 0.14860034670148578
+          }
+        },
+        "target": {
+          "CD8T": {
+            "pcc": 0.98,
+            "r2": 0.97,
+            "wd": 4.01,
+            "mmd": 0.11,
+            "mse": 0.0
+          },
+          "CD14+Mono": {
+            "pcc": 0.97,
+            "r2": 0.89,
+            "wd": 5.03,
+            "mmd": 0.09,
+            "mse": 0.0
+          },
+          "FCGR3A+Mono": {
+            "pcc": 0.91,
+            "r2": 0.53,
+            "wd": 7.01,
+            "mmd": 0.22,
+            "mse": 0.01
+          },
+          "B": {
+            "pcc": 0.97,
+            "r2": 0.94,
+            "wd": 4.4,
+            "mmd": 0.17,
+            "mse": 0.0
+          },
+          "CD4T": {
+            "pcc": 0.96,
+            "r2": 0.97,
+            "wd": 3.98,
+            "mmd": 0.11,
+            "mse": 0.0
+          },
+          "Dendritic": {
+            "pcc": 0.96,
+            "r2": 0.81,
+            "wd": 6.55,
+            "mmd": 0.17,
+            "mse": 0.01
+          },
+          "NK": {
+            "pcc": 0.96,
+            "r2": 0.9,
+            "wd": 5.07,
+            "mmd": 0.09,
+            "mse": 0.0
+          },
+          "Average": {
+            "pcc": 0.96,
+            "r2": 0.86,
+            "wd": 5.15,
+            "mmd": 0.14,
+            "mse": 0.0
+          }
+        },
+        "delta": {
+          "CD8T": {
+            "pcc": 0.003985,
+            "r2": -0.005771,
+            "wd": 0.047003,
+            "mmd": -0.077762,
+            "mse": 0.001158
+          },
+          "CD14+Mono": {
+            "pcc": -0.060706,
+            "r2": -0.180243,
+            "wd": 2.651968,
+            "mmd": 0.194092,
+            "mse": 0.018897
+          },
+          "FCGR3A+Mono": {
+            "pcc": -0.00097,
+            "r2": 0.031248,
+            "wd": 1.008266,
+            "mmd": 0.076878,
+            "mse": 0.01059
+          },
+          "B": {
+            "pcc": -0.020878,
+            "r2": -0.07355,
+            "wd": 0.356469,
+            "mmd": -0.083834,
+            "mse": 0.004254
+          },
+          "CD4T": {
+            "pcc": 0.006526,
+            "r2": -0.038832,
+            "wd": -0.414774,
+            "mmd": -0.06015,
+            "mse": 0.00205
+          },
+          "Dendritic": {
+            "pcc": -0.035443,
+            "r2": -0.086747,
+            "wd": 0.808712,
+            "mmd": 0.048072,
+            "mse": 0.003666
+          },
+          "NK": {
+            "pcc": 0.000457,
+            "r2": -0.004776,
+            "wd": -0.100077,
+            "mmd": -0.017093,
+            "mse": 0.003579
+          },
+          "Average": {
+            "pcc": -0.016718,
+            "r2": -0.052667,
+            "wd": 0.622509,
+            "mmd": 0.0086,
+            "mse": 0.009171
+          }
+        },
+        "raw_observed": {
+          "cell_types": [
+            "B",
+            "CD14+Mono",
+            "CD4T",
+            "CD8T",
+            "Dendritic",
+            "FCGR3A+Mono",
+            "NK"
+          ],
+          "metrics_per_cell_type": {
+            "B": {
+              "r2": 0.866449773311615,
+              "mse": 0.004254264757037163,
+              "pcc": 0.9491215944290161,
+              "wd": 4.756469100269124,
+              "mmd": 0.08616626262664795
+            },
+            "CD14+Mono": {
+              "r2": 0.70975661277771,
+              "mse": 0.01889680325984955,
+              "pcc": 0.9092944860458374,
+              "wd": 7.681967649316604,
+              "mmd": 0.2840921640396118
+            },
+            "CD4T": {
+              "r2": 0.9311676025390625,
+              "mse": 0.0020495883654803038,
+              "pcc": 0.9665259122848511,
+              "wd": 3.5652255086161793,
+              "mmd": 0.049849867820739746
+            },
+            "CD8T": {
+              "r2": 0.964229166507721,
+              "mse": 0.0011576139368116856,
+              "pcc": 0.983985185623169,
+              "wd": 4.057002849165924,
+              "mmd": 0.032237815856933597
+            },
+            "Dendritic": {
+              "r2": 0.7232533693313599,
+              "mse": 0.013666193000972271,
+              "pcc": 0.9245567321777344,
+              "wd": 7.358712477953183,
+              "mmd": 0.21807174682617186
+            },
+            "FCGR3A+Mono": {
+              "r2": 0.561247706413269,
+              "mse": 0.020590251311659813,
+              "pcc": 0.9090299606323242,
+              "wd": 8.018266010480026,
+              "mmd": 0.29687798023223877
+            },
+            "NK": {
+              "r2": 0.8952239155769348,
+              "mse": 0.0035789068788290024,
+              "pcc": 0.960456907749176,
+              "wd": 4.969922535167548,
+              "mmd": 0.07290658950805665
+            }
+          },
+          "average_metrics": {
+            "r2": 0.807332592351096,
+            "mse": 0.009170517358662826,
+            "pcc": 0.9432815398488726,
+            "wd": 5.7725094472812275,
+            "mmd": 0.14860034670148578
+          }
+        }
+      }
+    }
+  }
+}

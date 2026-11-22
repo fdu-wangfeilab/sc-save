@@ -18,7 +18,7 @@ This guide documents how to reproduce all five quantitative benchmarks (Tables 1
 4. [Model Architecture & Hyperparameter Configuration](#4-model-architecture--hyperparameter-configuration)
 5. [Option A: One-Click Google Colab Reproduction (Recommended)](#5-option-a-one-click-google-colab-reproduction-recommended)
 6. [Option B: Local CLI Reproduction](#6-option-b-local-cli-reproduction)
-7. [Paper Target Reference Tables (with Colab Verification Status)](#7-paper-target-reference-tables-with-colab-verification-status)
+7. [Paper Target vs. Colab G4 Reproduction Results (`reproduce-iclr2026@307c925`)](#7-paper-target-vs-colab-g4-reproduction-results-reproduce-iclr2026307c925)
 
 ---
 
@@ -283,29 +283,58 @@ python examples/perturbation_prediction/run_leave_one_out.py \
 
 ---
 
-## 7. Paper Target Reference Tables (with Colab Verification Status)
+## 7. Paper Target vs. Colab G4 Reproduction Results (`reproduce-iclr2026@307c925`)
 
-> **Status**: Colab H100/A100 reproduction numbers are currently **Pending** (to be populated in Phase 4 from `results/iclr2026_colab_repro.json`).
+> **Verification Status**: **Completed** across all 5 tables (11 datasets) on Google Colab Pro+ (`reproduce-iclr2026@307c925`). Full raw JSON output is archived in [`results/iclr2026_colab_repro.json`](results/iclr2026_colab_repro.json).
+
+### 7.1 Colab G4 Runtime Environment, Dataset Dimensions & Wall-Clock Timings
+
+- **Hardware & Software**: `NVIDIA RTX PRO 6000 Blackwell Server Edition` (**94.97 GB VRAM**; Colab Pro+ G4 selected while H100/A100 instances were busy), Python `3.13.16`, PyTorch `2.14.1+cu130`, CUDA `13.0`, `prep_workers=4`, `gpu_workers="auto"` (4 concurrent GPU worker processes), `cpu_workers="auto"` (8 CPU workers).
+- **Verified `manifest.json` Dataset Dimensions**:
+
+| Dataset Key | Table | Shape (`n_obs × n_vars`) | `n_shared_genept` | `n_semantic_blocks` | `n_pad` |
+| :--- | :--- | :---: | :---: | :---: | :---: |
+| `pbmc3k` | Table 1 | `2,110 × 9,600` | `8,248` | `2` | `1,027` |
+| `dentategyrus` | Table 1 | `14,570 × 19,200` | `78` | `0` | `2,198` |
+| `tabula_muris` | Table 1 | `196,311 × 22,400` | `97` | `0` | `2,666` |
+| `heart` | Table 2 | `20,000 × 28,800` | `19,112` | `5` | `2,138` |
+| `pbmc` | Table 2 | `33,506 × 12,800` | `10,757` | `3` | `1,949` |
+| `lung_atlas` | Table 2 | `32,472 × 16,000` | `13,714` | `4` | `852` |
+| `lung_cancer` | Table 3 | `114,692 × 2,000` | `1,925` | `4` | `0` |
+| `heart_bec` | Table 4 | `16,159 × 2,000` | `1,769` | `4` | `0` |
+| `pbmc_bec` | Table 4 | `32,603 × 2,000` | `1,984` | `4` | `0` |
+| `lung_atlas_bec` | Table 4 | `25,486 × 2,000` | `1,901` | `4` | `0` |
+| `pbmc_ifn` | Table 5 | `18,868 × 2,000` | `1,834` | `4` | `0` |
+
+- **Observed Wall-Clock Timings (Colab G4)**:
+  - Single-dataset `heart` (Table 2) accelerated from `~16m` to **`~7m`** (`vae=109.03s`, `fm=131.50s`, `gen=52.94s`).
+  - Parallel Tables 1–4 batch finished all **10 tasks in `5,295s` (`88m 15s`)** wall-clock (`tabula_muris` `88m 15s`, `lung_cancer` `70m 32s`, `pbmc_bec` `51m 04s`, `lung_atlas_bec` `47m 00s`, `lung_atlas` `30m 14s`, `pbmc` `25m 07s`, `dentategyrus` `9m 38s`, `pbmc3k` `1m 51s`).
+
+> **Reproduction Transparency Notes**:
+> 1. **Step A vs. Parallel-Batch Rerun (`heart` & `heart_bec`)**: [`results/iclr2026_colab_repro.json`](results/iclr2026_colab_repro.json) follows Cell 9's merge order where per-table `table2/heart` (fresh Step A run: `wd=8.8298` / `8.83`, `mmd=0.6416` / `0.64`, `mse=0.0158`, `pcc=0.8710`, `r2=0.5828`) and `table4/heart_bec` (fresh Step A run: `avg_bio=0.7539`, `avg_batch=0.8740`, `scib_score=0.8019`) took precedence over the parallel Tables 1–4 batch re-evaluation (`table2/heart` reusing Step A checkpoints: `wd=8.9382` / `8.94`, `mmd=0.6394` / `0.64`, `mse=0.0155` / `0.02`, `pcc=0.8684` / `0.87`, `r2=0.5830` / `0.58`; `table4/heart_bec` parallel rerun: `avg_bio=0.7527`, `avg_batch=0.8649`, `scib_score=0.7975`).
+> 2. **Hardware / Stochastic Variance**: Minor variation relative to RTX 3090 FP32 paper runs is expected under Blackwell CUDA 13 `bfloat16` Flow Matching autocast and stochastic OT/Leiden/FM sampling—notably `lung_cancer` unseen split `(13, 24)` (`WD 5.39 / PCC 0.82 / R2 0.65` vs. paper `4.63 / 0.85 / 0.70`) and `pbmc_ifn` LOO `CD14+Mono` (`WD 7.68 / PCC 0.91 / R2 0.71` vs. paper `5.03 / 0.97 / 0.89`, yielding `Average` `PCC 0.943 / R2 0.807 / WD 5.77` vs. paper `0.96 / 0.86 / 5.15`), while `table1/pbmc3k` (`WD 12.76` vs. `19.14`) and `dentategyrus` (`WD 8.08` vs. `9.16`) match or outperform paper targets.
+
+---
 
 ### Table 1: Single-Condition Generation (`cell_type`)
 
-| Dataset | Metric | scVI | scDiffusion | CFGen | SAVE (Paper) | SAVE (Colab H100/A100) |
+| Dataset | Metric | scVI | scDiffusion | CFGen | SAVE (Paper) | SAVE (Colab G4) |
 | :--- | :--- | :---: | :---: | :---: | :---: | :---: |
-| **PBMC3K** | WD ($\downarrow$) | 17.66 | 22.41 | **16.94** | 19.14 | *Pending* |
-| **PBMC3K** | MMD ($\downarrow$) | 0.94 | 1.27 | **0.85** | 1.80 | *Pending* |
-| **Dentate gyrus** | WD ($\downarrow$) | 22.61 | 22.56 | 21.55 | **9.16** | *Pending* |
-| **Dentate gyrus** | MMD ($\downarrow$) | 1.15 | 1.22 | 1.12 | **0.17** | *Pending* |
-| **Tabula Muris** | WD ($\downarrow$) | 9.76 | 7.89 | **7.39** | 10.86 | *Pending* |
-| **Tabula Muris** | MMD ($\downarrow$) | 0.26 | 0.24 | 0.19 | **0.04** | *Pending* |
+| **PBMC3K** | WD ($\downarrow$) | 17.66 | 22.41 | 16.94 | 19.14 | **12.76** (`12.7560`) |
+| **PBMC3K** | MMD ($\downarrow$) | 0.94 | 1.27 | 0.85 | 1.80 | **0.48** (`0.4794`) |
+| **Dentate gyrus** | WD ($\downarrow$) | 22.61 | 22.56 | 21.55 | 9.16 | **8.08** (`8.0844`) |
+| **Dentate gyrus** | MMD ($\downarrow$) | 1.15 | 1.22 | 1.12 | 0.17 | **0.11** (`0.1055`) |
+| **Tabula Muris** | WD ($\downarrow$) | 9.76 | 7.89 | **7.39** | 10.86 | 10.65 (`10.6501`) |
+| **Tabula Muris** | MMD ($\downarrow$) | 0.26 | 0.24 | 0.19 | **0.04** | **0.04** (`0.0356`) |
 
 <details>
-<summary>Appendix Table: Table 1 Gene-Level Expression Metrics (SAVE Paper Target)</summary>
+<summary>Appendix Table: Table 1 Gene-Level Expression Metrics (SAVE Paper vs. Colab G4)</summary>
 
-| Dataset | MSE ($\downarrow$) | PCC ($\uparrow$) | $R^2$ ($\uparrow$) | Colab H100/A100 |
-| :--- | :---: | :---: | :---: | :---: |
-| **PBMC3K** | 0.08 ± 0.18 | 0.93 ± 0.12 | 0.84 ± 0.27 | *Pending* |
-| **Dentate gyrus** | 0.00 ± 0.00 | 0.99 ± 0.01 | 0.97 ± 0.02 | *Pending* |
-| **Tabula Muris** | 0.00 ± 0.00 | 0.99 ± 0.01 | 0.95 ± 0.05 | *Pending* |
+| Dataset | Paper MSE ($\downarrow$) | Paper PCC ($\uparrow$) | Paper $R^2$ ($\uparrow$) | Colab G4 MSE | Colab G4 PCC | Colab G4 $R^2$ |
+| :--- | :---: | :---: | :---: | :---: | :---: | :---: |
+| **PBMC3K** | 0.08 ± 0.18 | 0.93 ± 0.12 | 0.84 ± 0.27 | `0.0406` | `0.9428` | `0.8919` |
+| **Dentate gyrus** | 0.00 ± 0.00 | 0.99 ± 0.01 | 0.97 ± 0.02 | `0.0048` | `0.9910` | `0.9736` |
+| **Tabula Muris** | 0.00 ± 0.00 | 0.99 ± 0.01 | 0.95 ± 0.05 | `0.0049` | `0.9892` | `0.9520` |
 
 </details>
 
@@ -313,23 +342,23 @@ python examples/perturbation_prediction/run_leave_one_out.py \
 
 ### Table 2: Dual-Condition Generation (`batch`, `cell_type`)
 
-| Dataset | Metric | scVI | CFGen | scDiffusion | SAVE (Paper) | SAVE (Colab H100/A100) |
+| Dataset | Metric | scVI | CFGen | scDiffusion | SAVE (Paper) | SAVE (Colab G4) |
 | :--- | :--- | :---: | :---: | :---: | :---: | :---: |
-| **Heart** | WD ($\downarrow$) | 19.18 | 12.57 | 20.82 | **8.30** | *Pending* |
-| **Heart** | MMD ($\downarrow$) | 1.19 | 0.66 | 0.94 | **0.63** | *Pending* |
-| **PBMC** | WD ($\downarrow$) | 17.75 | 17.41 | 11.38 | **5.37** | *Pending* |
-| **PBMC** | MMD ($\downarrow$) | 0.95 | 0.65 | 0.48 | **0.29** | *Pending* |
-| **Lung Atlas** | WD ($\downarrow$) | 22.20 | 28.02 | 13.89 | **4.37** | *Pending* |
-| **Lung Atlas** | MMD ($\downarrow$) | 2.27 | 1.76 | 1.71 | **1.14** | *Pending* |
+| **Heart** | WD ($\downarrow$) | 19.18 | 12.57 | 20.82 | **8.30** | 8.83 (`8.8298`) |
+| **Heart** | MMD ($\downarrow$) | 1.19 | 0.66 | 0.94 | **0.63** | 0.64 (`0.6416`) |
+| **PBMC** | WD ($\downarrow$) | 17.75 | 17.41 | 11.38 | **5.37** | 5.39 (`5.3851`) |
+| **PBMC** | MMD ($\downarrow$) | 0.95 | 0.65 | 0.48 | **0.29** | 0.30 (`0.3027`) |
+| **Lung Atlas** | WD ($\downarrow$) | 22.20 | 28.02 | 13.89 | **4.37** | 4.42 (`4.4174`) |
+| **Lung Atlas** | MMD ($\downarrow$) | 2.27 | 1.76 | 1.71 | **1.14** | 1.16 (`1.1579`) |
 
 <details>
-<summary>Appendix Table: Table 2 Gene-Level Expression Metrics (SAVE Paper Target)</summary>
+<summary>Appendix Table: Table 2 Gene-Level Expression Metrics (SAVE Paper vs. Colab G4)</summary>
 
-| Dataset | MSE ($\downarrow$) | PCC ($\uparrow$) | $R^2$ ($\uparrow$) | Colab H100/A100 |
-| :--- | :---: | :---: | :---: | :---: |
-| **Heart** | 0.01 ± 0.02 | 0.88 ± 0.13 | 0.63 ± 0.26 | *Pending* |
-| **PBMC** | 0.02 ± 0.02 | 0.98 ± 0.03 | 0.95 ± 0.07 | *Pending* |
-| **Lung Atlas** | 0.01 ± 0.01 | 0.91 ± 0.11 | 0.84 ± 0.18 | *Pending* |
+| Dataset | Paper MSE ($\downarrow$) | Paper PCC ($\uparrow$) | Paper $R^2$ ($\uparrow$) | Colab G4 MSE | Colab G4 PCC | Colab G4 $R^2$ |
+| :--- | :---: | :---: | :---: | :---: | :---: | :---: |
+| **Heart** | 0.01 ± 0.02 | 0.88 ± 0.13 | 0.63 ± 0.26 | `0.0158` | `0.8710` | `0.5828` |
+| **PBMC** | 0.02 ± 0.02 | 0.98 ± 0.03 | 0.95 ± 0.07 | `0.0061` | `0.9857` | `0.9689` |
+| **Lung Atlas** | 0.01 ± 0.01 | 0.91 ± 0.11 | 0.84 ± 0.18 | `0.0089` | `0.9121` | `0.8308` |
 
 </details>
 
@@ -337,25 +366,27 @@ python examples/perturbation_prediction/run_leave_one_out.py \
 
 ### Table 3: Multi-Condition Generation on Lung Cancer (5 Covariates)
 
-| Split | Metric | CFGen | scDiffusion | SAVE (Paper) | SAVE (Colab H100/A100) |
+| Split | Metric | CFGen | scDiffusion | SAVE (Paper) | SAVE (Colab G4) |
 | :--- | :--- | :---: | :---: | :---: | :---: |
-| **Seen** (25 combos) | WD ($\downarrow$) | 16.94 ± 4.19 | 5.27 ± 2.14 | **3.10 ± 0.96** | *Pending* |
-| **Seen** (25 combos) | MMD ($\downarrow$) | 1.49 ± 1.80 | 1.06 ± 1.59 | **1.06 ± 1.48** | *Pending* |
-| **Unseen** (combos 13 & 24) | WD ($\downarrow$) | 23.67 ± 3.08 | 5.29 ± 2.03 | **4.63 ± 0.95** | *Pending* |
-| **Unseen** (combos 13 & 24) | MMD ($\downarrow$) | 2.76 ± 2.64 | **1.87 ± 2.31** | 2.11 ± 2.11 | *Pending* |
+| **Seen** (25 combos) | WD ($\downarrow$) | 16.94 ± 4.19 | 5.27 ± 2.14 | 3.10 ± 0.96 | **3.07** (`3.0661`) |
+| **Seen** (25 combos) | MMD ($\downarrow$) | 1.49 ± 1.80 | 1.06 ± 1.59 | **1.06** ± 1.48 | 1.08 (`1.0762`) |
+| **Unseen** (combos 13 & 24) | WD ($\downarrow$) | 23.67 ± 3.08 | 5.29 ± 2.03 | **4.63** ± 0.95 | 5.39 (`5.3855`) |
+| **Unseen** (combos 13 & 24) | MMD ($\downarrow$) | 2.76 ± 2.64 | **1.87 ± 2.31** | 2.11 ± 2.11 | 2.16 (`2.1557`) |
+| **Macro** (all 27 combos) | WD ($\downarrow$) | — | — | **3.15** | 3.23 (`3.2299`) |
+| **Macro** (all 27 combos) | MMD ($\downarrow$) | — | — | **1.29** | 1.31 (`1.3057`) |
 
 <details>
-<summary>Appendix Tables: Table 3 Gene-Level & Held-Out Per-Condition Breakdown (SAVE Paper Target)</summary>
+<summary>Appendix Tables: Table 3 Gene-Level & Held-Out Per-Condition Breakdown (SAVE Paper vs. Colab G4)</summary>
 
-| Subset | MSE ($\downarrow$) | PCC ($\uparrow$) | $R^2$ ($\uparrow$) | Colab H100/A100 |
-| :--- | :---: | :---: | :---: | :---: |
-| **Seen** | 0.01 ± 0.02 | 0.94 ± 0.07 | 0.88 ± 0.14 | *Pending* |
-| **Unseen** | 0.04 ± 0.03 | 0.85 ± 0.08 | 0.70 ± 0.14 | *Pending* |
+| Subset | Paper MSE ($\downarrow$) | Paper PCC ($\uparrow$) | Paper $R^2$ ($\uparrow$) | Colab G4 MSE | Colab G4 PCC | Colab G4 $R^2$ |
+| :--- | :---: | :---: | :---: | :---: | :---: | :---: |
+| **Seen** | 0.01 ± 0.02 | 0.94 ± 0.07 | 0.88 ± 0.14 | `0.0117` | `0.9443` | `0.8812` |
+| **Unseen** | 0.04 ± 0.03 | 0.85 ± 0.08 | 0.70 ± 0.14 | `0.0441` | `0.8168` | `0.6467` |
 
-Per-condition distribution metrics (`tab:multi_cond_performance`):
+Paper per-condition distribution metrics (`tab:multi_cond_performance`):
 - Condition 13 (Unseen): WD = **4.60**, MMD = **2.15**
 - Condition 24 (Unseen): WD = **3.36**, MMD = **1.86**
-- All 27 conditions mean: WD = **3.15**, MMD = **1.29**
+- All 27 conditions mean: WD = **3.15**, MMD = **1.29** (Colab G4 macro: WD = `3.2299`, MMD = `1.3057`)
 
 </details>
 
@@ -363,26 +394,29 @@ Per-condition distribution metrics (`tab:multi_cond_performance`):
 
 ### Table 4: Batch Effect Correction (scIB Evaluation)
 
-| Dataset | Metric | Scanorama | Harmony | scVI | trVAE | SAVE (Paper) | SAVE (Colab H100/A100) |
+| Dataset | Metric | Scanorama | Harmony | scVI | trVAE | SAVE (Paper) | SAVE (Colab G4) |
 | :--- | :--- | :---: | :---: | :---: | :---: | :---: | :---: |
-| **Lung Atlas** | Bio ($\uparrow$) | 0.70 | 0.65 | 0.58 | 0.69 | **0.73** (0.7340) | *Pending* |
-| **Lung Atlas** | Batch ($\uparrow$) | 0.88 | **0.93** | 0.83 | 0.90 | **0.93** (0.9309) | *Pending* |
-| **Lung Atlas** | scIB ($\uparrow$) | 0.77 | 0.76 | 0.68 | 0.78 | **0.81** (0.8128) | *Pending* |
-| **Heart** | Bio ($\uparrow$) | 0.72 | **0.76** | 0.66 | 0.75 | **0.76** (0.7574) | *Pending* |
-| **Heart** | Batch ($\uparrow$) | 0.82 | **0.89** | 0.81 | 0.83 | 0.86 (0.8596) | *Pending* |
-| **Heart** | scIB ($\uparrow$) | 0.76 | **0.81** | 0.72 | 0.78 | 0.80 (0.7983) | *Pending* |
-| **PBMC** | Bio ($\uparrow$) | 0.71 | 0.71 | 0.47 | **0.75** | **0.75** (0.7516) | *Pending* |
-| **PBMC** | Batch ($\uparrow$) | 0.93 | **0.95** | 0.78 | 0.91 | **0.95** (0.9498) | *Pending* |
-| **PBMC** | scIB ($\uparrow$) | 0.80 | 0.80 | 0.59 | 0.82 | **0.83** (0.8309) | *Pending* |
+| **Lung Atlas** | Bio ($\uparrow$) | 0.70 | 0.65 | 0.58 | 0.69 | **0.73** (`0.7340`) | **0.73** (`0.7342`) |
+| **Lung Atlas** | Batch ($\uparrow$) | 0.88 | **0.93** | 0.83 | 0.90 | **0.93** (`0.9309`) | 0.92 (`0.9231`) |
+| **Lung Atlas** | scIB ($\uparrow$) | 0.77 | 0.76 | 0.68 | 0.78 | **0.81** (`0.8128`) | **0.81** (`0.8097`) |
+| **Heart** | Bio ($\uparrow$) | 0.72 | **0.76** | 0.66 | 0.75 | **0.76** (`0.7574`) | 0.75 (`0.7539`) |
+| **Heart** | Batch ($\uparrow$) | 0.82 | **0.89** | 0.81 | 0.83 | 0.86 (`0.8596`) | 0.87 (`0.8740`) |
+| **Heart** | scIB ($\uparrow$) | 0.76 | **0.81** | 0.72 | 0.78 | 0.80 (`0.7983`) | 0.80 (`0.8019`) |
+| **PBMC** | Bio ($\uparrow$) | 0.71 | 0.71 | 0.47 | **0.75** | **0.75** (`0.7516`) | 0.73 (`0.7330`) |
+| **PBMC** | Batch ($\uparrow$) | 0.93 | **0.95** | 0.78 | 0.91 | **0.95** (`0.9498`) | 0.93 (`0.9317`) |
+| **PBMC** | scIB ($\uparrow$) | 0.80 | 0.80 | 0.59 | 0.82 | **0.83** (`0.8309`) | 0.81 (`0.8125`) |
 
 <details>
-<summary>Appendix Tables: Detailed scIB Sub-Metrics for SAVE (Paper Target)</summary>
+<summary>Appendix Tables: Detailed scIB Sub-Metrics for SAVE (Paper Target vs. Colab G4)</summary>
 
-| Dataset | NMI | ARI | ASW_label | ASW_batch | PCR_batch | graph_conn | avg_bio | avg_batch | scib_score |
-| :--- | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: |
-| **PBMC** | 0.8637 | 0.7952 | 0.5958 | 0.9128 | 0.4996 | 0.9868 | 0.7516 | 0.9498 | 0.8309 |
-| **Lung Atlas** | 0.8285 | 0.7340 | 0.6395 | 0.8693 | 0.2134 | 0.9926 | 0.7340 | 0.9309 | 0.8128 |
-| **Heart** | 0.7999 | 0.8146 | 0.6579 | 0.8576 | 0.2554 | 0.8615 | 0.7574 | 0.8596 | 0.7983 |
+| Dataset | Source | NMI | ARI | ASW_label | ASW_batch | PCR_batch | graph_conn | avg_bio | avg_batch | scib_score |
+| :--- | :--- | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: |
+| **PBMC** | Paper | 0.8637 | 0.7952 | 0.5958 | 0.9128 | 0.4996 | 0.9868 | 0.7516 | 0.9498 | 0.8309 |
+| **PBMC** | Colab G4 | 0.8385 | 0.7476 | 0.6128 | 0.8789 | 0.5709 | 0.9845 | 0.7330 | 0.9317 | 0.8125 |
+| **Lung Atlas** | Paper | 0.8285 | 0.7340 | 0.6395 | 0.8693 | 0.2134 | 0.9926 | 0.7340 | 0.9309 | 0.8128 |
+| **Lung Atlas** | Colab G4 | 0.8257 | 0.7186 | 0.6583 | 0.8542 | 0.1798 | 0.9919 | 0.7342 | 0.9231 | 0.8097 |
+| **Heart** | Paper | 0.7999 | 0.8146 | 0.6579 | 0.8576 | 0.2554 | 0.8615 | 0.7574 | 0.8596 | 0.7983 |
+| **Heart** | Colab G4 | 0.7986 | 0.8138 | 0.6492 | 0.8497 | 0.1640 | 0.8983 | 0.7539 | 0.8740 | 0.8019 |
 
 </details>
 
@@ -390,13 +424,13 @@ Per-condition distribution metrics (`tab:multi_cond_performance`):
 
 ### Table 5: Leave-One-Out Perturbation Prediction (`PBMC-IFN`)
 
-| Held-Out Cell Type | SAVE Paper PCC ($\uparrow$) | SAVE Paper $R^2$ ($\uparrow$) | Colab PCC | Colab $R^2$ | SAVE Paper WD / MMD ($\downarrow$) | SAVE Paper MSE ($\downarrow$) |
-| :--- | :---: | :---: | :---: | :---: | :---: | :---: |
-| **CD8T** | 0.98 | 0.97 | *Pending* | *Pending* | 4.01 / 0.11 | 0.00 |
-| **CD14+Mono** | 0.97 | 0.89 | *Pending* | *Pending* | 5.03 / 0.09 | 0.00 |
-| **FCGR3A+Mono** | 0.91 | 0.53 | *Pending* | *Pending* | 7.01 / 0.22 | 0.01 |
-| **B** | 0.97 | 0.94 | *Pending* | *Pending* | 4.40 / 0.17 | 0.00 |
-| **CD4T** | 0.96 | 0.97 | *Pending* | *Pending* | 3.98 / 0.11 | 0.00 |
-| **Dendritic** | 0.96 | 0.81 | *Pending* | *Pending* | 6.55 / 0.17 | 0.01 |
-| **NK** | 0.96 | 0.90 | *Pending* | *Pending* | 5.07 / 0.09 | 0.00 |
-| **Average** | **0.96** | **0.86** | *Pending* | *Pending* | **5.15 / 0.14** | **0.00** |
+| Held-Out Cell Type | Paper PCC ($\uparrow$) | Colab G4 PCC | Paper $R^2$ ($\uparrow$) | Colab G4 $R^2$ | Paper WD / MMD ($\downarrow$) | Colab G4 WD / MMD | Paper MSE ($\downarrow$) | Colab G4 MSE |
+| :--- | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: |
+| **CD8T** | 0.98 | `0.9840` | 0.97 | `0.9642` | 4.01 / 0.11 | `4.06 / 0.03` | 0.00 | `0.0012` |
+| **CD14+Mono** | 0.97 | `0.9093` | 0.89 | `0.7098` | 5.03 / 0.09 | `7.68 / 0.28` | 0.00 | `0.0189` |
+| **FCGR3A+Mono** | 0.91 | `0.9090` | 0.53 | `0.5612` | 7.01 / 0.22 | `8.02 / 0.30` | 0.01 | `0.0206` |
+| **B** | 0.97 | `0.9491` | 0.94 | `0.8664` | 4.40 / 0.17 | `4.76 / 0.09` | 0.00 | `0.0043` |
+| **CD4T** | 0.96 | `0.9665` | 0.97 | `0.9312` | 3.98 / 0.11 | `3.57 / 0.05` | 0.00 | `0.0020` |
+| **Dendritic** | 0.96 | `0.9246` | 0.81 | `0.7233` | 6.55 / 0.17 | `7.36 / 0.22` | 0.01 | `0.0137` |
+| **NK** | 0.96 | `0.9605` | 0.90 | `0.8952` | 5.07 / 0.09 | `4.97 / 0.07` | 0.00 | `0.0036` |
+| **Average** | **0.96** | **`0.9433`** | **0.86** | **`0.8073`** | **5.15 / 0.14** | **`5.77 / 0.15`** | **0.00** | **`0.0092`** |

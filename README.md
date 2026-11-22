@@ -170,10 +170,11 @@ Extracting condition-modulated attention weights from the Flow Matching Transfor
 ```text
 src/sc_save_public/   Reusable package code (datasets, models, generation, BEC, perturbation, eval)
 examples/             Runnable CLI entrypoints & unified ICLR 2026 orchestrator
-notebooks/            Google Colab H100/A100 ICLR 2026 reproduction notebook
+notebooks/            Google Colab G4/H100/A100 ICLR 2026 reproduction notebook
+results/              Verified Colab G4 reproduction JSON (iclr2026_colab_repro.json)
 tests/                Offline unit & smoke test coverage
 docs/assets/          Paper figures and visual assets
-REPRODUCIBILITY.md    Detailed ICLR 2026 paper reproduction guide & target reference tables
+REPRODUCIBILITY.md    Detailed ICLR 2026 paper reproduction guide & verified Colab comparison tables
 ```
 
 ---
@@ -204,7 +205,19 @@ python examples/reproduce_iclr2026.py \
 python examples/reproduce_iclr2026.py --tasks table2 --data-root ./data --output-root ./outputs/iclr2026 --gpu-workers auto --device 0
 ```
 
-See [`REPRODUCIBILITY.md`](REPRODUCIBILITY.md) for dataset URLs, model hyperparameters, hardware expectations, and full Paper Target Reference tables.
+### Verified Colab G4 Reproduction (`reproduce-iclr2026@307c925`)
+
+All 5 tables (11 datasets) completed on Colab Pro+ (`NVIDIA RTX PRO 6000 Blackwell Server Edition`, `94.97 GB` VRAM, PyTorch `2.14.1+cu130`, CUDA `13.0`, `gpu_workers="auto"` / 4 GPU workers, `cpu_workers="auto"` / 8 CPU workers; `5,295s` / `88m 15s` wall-clock for parallel Tables 1–4, `~7m` for single-run `heart`). Full per-metric tables, dataset dimensions, and variance notes are in [`REPRODUCIBILITY.md`](REPRODUCIBILITY.md) and [`results/iclr2026_colab_repro.json`](results/iclr2026_colab_repro.json):
+
+| Benchmark | Key Metric(s) | Paper Target | Colab G4 Reproduced |
+| :--- | :--- | :---: | :---: |
+| **Table 1** (`pbmc3k` / `dentategyrus` / `tabula_muris`) | WD ($\downarrow$) / MMD ($\downarrow$) | `19.14/1.80` · `9.16/0.17` · `10.86/0.04` | `12.76/0.48` · `8.08/0.11` · `10.65/0.04` |
+| **Table 2** (`heart` / `pbmc` / `lung_atlas`) | WD ($\downarrow$) / MMD ($\downarrow$) | `8.30/0.63` · `5.37/0.29` · `4.37/1.14` | `8.83/0.64` · `5.39/0.30` · `4.42/1.16` |
+| **Table 3** (`lung_cancer` Seen / Unseen) | WD ($\downarrow$) / MMD ($\downarrow$) | `3.10/1.06` · `4.63/2.11` | `3.07/1.08` · `5.39/2.16` |
+| **Table 4** (`lung_atlas` / `heart` / `pbmc` BEC) | scIB ($\uparrow$) | `0.8128` · `0.7983` · `0.8309` | `0.8097` · `0.8019` · `0.8125` |
+| **Table 5** (`pbmc_ifn` 7-fold LOO Average) | PCC ($\uparrow$) / $R^2$ ($\uparrow$) / WD ($\downarrow$) | `0.96` / `0.86` / `5.15` | `0.943` / `0.807` / `5.77` |
+
+See [`REPRODUCIBILITY.md`](REPRODUCIBILITY.md) for dataset URLs, model hyperparameters, hardware timings, Step A vs. parallel rerun notes, and complete Paper vs. Colab G4 comparison tables.
 
 ---
 
