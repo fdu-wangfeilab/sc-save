@@ -11,7 +11,13 @@ from torch.distributions import Normal, kl_divergence
 from torch.optim import lr_scheduler
 from torch.distributions import Normal
 from einops import rearrange, repeat
+from torch.utils.data import TensorDataset
 from sc_save_public.models.VAE_model import VAE
+from sc_save_public.models.VAE_train import (
+    enable_cuda_tf32,
+    get_gpu_tensor_budget_bytes,
+    iter_shuffled_batches,
+)
 from sc_save_public.models.utils.process_h5ad import convert_adata_to_dataloader
 
 from sc_save_public.models.fm.fm import FM
@@ -136,6 +142,11 @@ def flow_matching_train(
     torch.cuda.manual_seed(seed)
     torch.cuda.manual_seed_all(seed)
 
+    enable_cuda_tf32(device)
+
+    if num_epoch <= 0:
+        return {}
+
     lr_milestone = num_epoch // 4
     optimizer = torch.optim.AdamW(
         fm.denoising_model.parameters(), lr=lr, weight_decay=weight_decay
@@ -151,20 +162,25 @@ def flow_matching_train(
         optimizer, schedulers=[scheduler1, scheduler2], milestones=[lr_milestone]
     )
 
-    context = (
-        torch.amp.autocast(device_type=device.type, dtype=torch.float16)
-        if is_flash_attn
-        else DummyContextManager()
+    use_bf16 = (
+        device.type == "cuda"
+        and not is_flash_attn
+        and hasattr(torch.cuda, "is_bf16_supported")
+        and torch.cuda.is_bf16_supported()
     )
-
-    recon_criterion = F.binary_cross_entropy if recon_criterion == "bce" else F.mse_loss
+    if is_flash_attn:
+        context = torch.amp.autocast(device_type=device.type, dtype=torch.float16)
+    elif use_bf16:
+        context = torch.amp.autocast(device_type="cuda", dtype=torch.bfloat16)
+    else:
+        context = DummyContextManager()
 
     scaler = torch.amp.GradScaler(device=device)
 
     if is_flash_attn:
 
         def step_optimizer(loss_dict):
-            optimizer.zero_grad()
+            optimizer.zero_grad(set_to_none=True)
             scaler.scale(sum(loss_dict.values())).backward()
             scaler.unscale_(optimizer)
             nn.utils.clip_grad_norm_(fm.denoising_model.parameters(), 1.0)
@@ -173,78 +189,152 @@ def flow_matching_train(
     else:
 
         def step_optimizer(loss_dict):
-            optimizer.zero_grad()
+            optimizer.zero_grad(set_to_none=True)
             sum(loss_dict.values()).backward()
             nn.utils.clip_grad_norm_(fm.denoising_model.parameters(), 1.0)
             optimizer.step()
 
-    tq = tqdm(range(num_epoch), ncols=80)
-
     vae.eval()
     fm.train()
 
-    for epoch in tq:
-        epoch_loss = defaultdict(float)
+    # Precompute frozen VAE encoder posteriors (mu, var) once when possible
+    # so 200 FM epochs do not re-encode full gene expression every step.
+    precomputed_latents: tuple[torch.Tensor, torch.Tensor, torch.Tensor] | None = None
+    resident_device = device
+    dataset = getattr(dataloader, "dataset", None)
+    if (
+        not is_emb_ary
+        and isinstance(dataset, TensorDataset)
+        and len(dataset.tensors) >= 2
+        and len(dataset) > 0
+        and hasattr(getattr(vae, "encoder", None), "reparameterize")
+    ):
+        x_all, y_all = dataset.tensors[0], dataset.tensors[1]
+        n_samples = x_all.shape[0]
+        pre_bs = max(int(getattr(dataloader, "batch_size", None) or 1024), 1024)
+        mu_chunks: list[torch.Tensor] = []
+        var_chunks: list[torch.Tensor] = []
+        target_store_device = device
 
-        current_cond_msk_prob = col_msk_threshold
+        with torch.no_grad():
+            for start in range(0, n_samples, pre_bs):
+                end = min(start + pre_bs, n_samples)
+                x_b = x_all[start:end].float().to(device)
+                y_b = y_all[start:end].long().to(device)
 
-        for i, data in enumerate(dataloader):
-            if is_emb_ary:
-                x, y, emb = (
-                    data[0].float().to(device),
-                    data[1].long().to(device),
-                    data[2].float().to(device),
-                )
-                c = add_cond_mask_with_emb(
-                    emb, y, col_msk_threshold, vae, is_col_wise_mask, is_multi_codebook
-                )
-            else:
-                x, y = data[0].float().to(device), data[1].long().to(device)
-
-                # c = add_cond_mask(
-                #     y=y,
-                #     col_msk_threshold=col_msk_threshold,
-                #     model=fm.denoising_model,
-                #     is_col_wise_mask=is_col_wise_mask,
-                #     is_multi_codebook=is_multi_codebook,
-                # )
-
-                y_flat = rearrange(y, "b c -> (b c)")
-                c = fm.denoising_model.cond_embedder(y_flat)
-                c = rearrange(c, "(b c) e -> b c e", b=y.shape[0])
-
-                mask_ids = torch.ones_like(y).to(device) * vae.mask_id
+                mask_ids = torch.ones_like(y_b) * vae.mask_id
                 mask_ids = rearrange(mask_ids, "b c -> (b c)")
                 mask_emb = vae.cond_embedder(mask_ids)
-                mask_emb = rearrange(mask_emb, "(b c) e -> b c e", b=y.shape[0])
+                mask_emb = rearrange(mask_emb, "(b c) e -> b c e", b=y_b.shape[0])
 
-            with context:
-                with torch.no_grad():
-                    z, _, _ = vae.encoder(x, mask_emb)
+                with context:
+                    _, mu_b, var_b = vae.encoder(x_b, mask_emb)
+                mu_b = mu_b.float()
+                var_b = var_b.float()
 
-                loss = {"loss": fm._step(z, c)}
+                if start == 0 and device.type == "cuda":
+                    est_bytes = n_samples * (
+                        mu_b[0].numel() * 4 * 2 + y_all[0].numel() * 8
+                    )
+                    if est_bytes > get_gpu_tensor_budget_bytes(device):
+                        target_store_device = torch.device("cpu")
 
-            step_optimizer(loss)
+                mu_chunks.append(mu_b.to(target_store_device))
+                var_chunks.append(var_b.to(target_store_device))
 
-            for k, v in loss.items():
-                epoch_loss[k] += loss[k].item()
+        mu_all = torch.cat(mu_chunks, dim=0)
+        var_all = torch.cat(var_chunks, dim=0)
+        y_resident = y_all.long().to(target_store_device)
+        resident_device = target_store_device
+        precomputed_latents = (mu_all, var_all, y_resident)
+        del mu_chunks, var_chunks
 
-        scheduler.step()
+    batch_size = int(getattr(dataloader, "batch_size", None) or len(dataloader.dataset))
+    drop_last = bool(getattr(dataloader, "drop_last", False))
 
-        epoch_loss = {k: v / (i + 1) for k, v in epoch_loss.items()}
-        epoch_info = ",".join(["{}={:.3f}".format(k, v) for k, v in epoch_loss.items()])
-        tq.set_postfix_str(epoch_info)
+    tq = tqdm(range(num_epoch), ncols=80)
+    epoch_loss = {}
+    try:
+        for epoch in tq:
+            loss_accum = torch.zeros((), device=device)
+            num_batches = 0
 
-        if loss_monitor:
-            loss_monitor.log(
-                {
-                    "loss": epoch_loss["loss"],
-                    "lr": scheduler.get_last_lr()[0],
-                }
-            )
+            if precomputed_latents is not None:
+                for mu_b, var_b, y_b in iter_shuffled_batches(
+                    precomputed_latents,
+                    batch_size=batch_size,
+                    device=resident_device,
+                    drop_last=drop_last,
+                ):
+                    num_batches += 1
+                    if resident_device != device:
+                        mu_b = mu_b.to(device, non_blocking=True)
+                        var_b = var_b.to(device, non_blocking=True)
+                        y_b = y_b.to(device, non_blocking=True)
 
-        if tune_session:
-            tune_session.report({"loss": sum(epoch_loss.values())})
+                    with torch.no_grad():
+                        z = vae.encoder.reparameterize(mu_b, var_b)
 
-    # for some config record
+                    y_flat = rearrange(y_b, "b c -> (b c)")
+                    c = fm.denoising_model.cond_embedder(y_flat)
+                    c = rearrange(c, "(b c) e -> b c e", b=y_b.shape[0])
+
+                    with context:
+                        loss = {"loss": fm._step(z, c)}
+
+                    step_optimizer(loss)
+                    loss_accum = loss_accum + loss["loss"].detach()
+            else:
+                for data in dataloader:
+                    num_batches += 1
+                    if is_emb_ary:
+                        x, y, emb = (
+                            data[0].float().to(device),
+                            data[1].long().to(device),
+                            data[2].float().to(device),
+                        )
+                        c = add_cond_mask_with_emb(
+                            emb, y, col_msk_threshold, vae, is_col_wise_mask, is_multi_codebook
+                        )
+                    else:
+                        x, y = data[0].float().to(device), data[1].long().to(device)
+                        y_flat = rearrange(y, "b c -> (b c)")
+                        c = fm.denoising_model.cond_embedder(y_flat)
+                        c = rearrange(c, "(b c) e -> b c e", b=y.shape[0])
+
+                        mask_ids = torch.ones_like(y).to(device) * vae.mask_id
+                        mask_ids = rearrange(mask_ids, "b c -> (b c)")
+                        mask_emb = vae.cond_embedder(mask_ids)
+                        mask_emb = rearrange(mask_emb, "(b c) e -> b c e", b=y.shape[0])
+
+                    with context:
+                        with torch.no_grad():
+                            z, _, _ = vae.encoder(x, mask_emb)
+                        loss = {"loss": fm._step(z, c)}
+
+                    step_optimizer(loss)
+                    loss_accum = loss_accum + loss["loss"].detach()
+
+            scheduler.step()
+
+            epoch_loss = {"loss": (loss_accum / max(1, num_batches)).item()}
+            epoch_info = ",".join(["{}={:.3f}".format(k, v) for k, v in epoch_loss.items()])
+            tq.set_postfix_str(epoch_info)
+
+            if loss_monitor:
+                loss_monitor.log(
+                    {
+                        "loss": epoch_loss["loss"],
+                        "lr": scheduler.get_last_lr()[0],
+                    }
+                )
+
+            if tune_session:
+                tune_session.report({"loss": sum(epoch_loss.values())})
+    finally:
+        if precomputed_latents is not None:
+            del precomputed_latents
+            if device.type == "cuda" and torch.cuda.is_available():
+                torch.cuda.empty_cache()
+
     return epoch_loss

@@ -747,7 +747,7 @@ class FM(nn.Module):
         return torch.randn_like(x)
 
     def sample_location_and_conditional_flow(self, x0, x1, t=None):
-        """
+        r"""
         Compute the sample xt (drawn from N(t * x1 + (1 - t) * x0, sigma))
         and the conditional vector field ut(x1|x0) = x1 - x0, see Eq.(15) [1]
         with respect to the minibatch OT plan $\Pi$.

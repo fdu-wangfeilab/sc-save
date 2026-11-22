@@ -78,11 +78,21 @@ class Attention(nn.Module):
         )
         q, k, v = qkv.unbind(0)  # make torchscript happy (cannot use tensor as tuple)
 
-        attn = (q @ k.transpose(-2, -1)) * self.scale
-        attn = attn.softmax(dim=-1)
-        attn = self.attn_drop(attn)
+        if not is_output_attn_weight and hasattr(F, "scaled_dot_product_attention"):
+            x = F.scaled_dot_product_attention(
+                q,
+                k,
+                v,
+                dropout_p=self.attn_drop.p if self.training else 0.0,
+            )
+            x = x.transpose(1, 2).reshape(B, N, C)
+        else:
+            attn = (q @ k.transpose(-2, -1)) * self.scale
+            attn = attn.softmax(dim=-1)
+            attn = self.attn_drop(attn)
 
-        x = (attn @ v).transpose(1, 2).reshape(B, N, C)
+            x = (attn @ v).transpose(1, 2).reshape(B, N, C)
+
         x = self.proj(x)
         x = self.proj_drop(x)
 
@@ -246,8 +256,6 @@ class DiTblock(nn.Module):
             )
         else:
             attn_out = self.attn(modulate(self.norm1(x), shift_msa, scale_msa))
-
-        attn_out = self.attn(modulate(self.norm1(x), shift_msa, scale_msa))
 
         x = x + gate_msa.unsqueeze(1) * attn_out
         # mlp blk 采用 ViT 中实现的版本

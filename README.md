@@ -9,16 +9,18 @@
 </p>
 
 <p>
+  <a href="https://colab.research.google.com/github/fdu-wangfeilab/sc-save/blob/main/notebooks/SAVE_ICLR2026_Reproduce_Colab.ipynb"><img src="https://colab.research.google.com/assets/colab-badge.svg" alt="Open In Colab" /></a>
   <a href="https://openreview.net/forum?id=l7QEoK4uDP"><img src="https://img.shields.io/badge/ICLR_2026-OpenReview-0F766E?style=flat-square&labelColor=0D1117" alt="ICLR 2026 OpenReview" /></a>
   <a href="https://arxiv.org/abs/2604.16776"><img src="https://img.shields.io/badge/arXiv-2604.16776-10B981?style=flat-square&labelColor=0D1117&logo=arxiv&logoColor=white" alt="arXiv 2604.16776" /></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-1F6F5B?style=flat-square&labelColor=0D1117" alt="MIT License" /></a>
-  <a href="#environment-installation"><img src="https://img.shields.io/badge/Python-3.10-0D1117?style=flat-square&logo=python&logoColor=2DD4BF" alt="Python 3.10" /></a>
-  <a href="#environment-installation"><img src="https://img.shields.io/badge/PyTorch-2.5.1-0D1117?style=flat-square&logo=pytorch&logoColor=10B981" alt="PyTorch 2.5.1" /></a>
+  <a href="#environment-installation"><img src="https://img.shields.io/badge/Python-3.10+-0D1117?style=flat-square&logo=python&logoColor=2DD4BF" alt="Python 3.10+" /></a>
+  <a href="#environment-installation"><img src="https://img.shields.io/badge/PyTorch-%3E%3D2.2-0D1117?style=flat-square&logo=pytorch&logoColor=10B981" alt="PyTorch >= 2.2" /></a>
 </p>
 
 <p>
   <a href="#overview">Overview</a> &middot;
   <a href="#key-results">Key Results</a> &middot;
+  <a href="#iclr-2026-reproduction-quickstart">Reproduce ICLR 2026</a> &middot;
   <a href="#biological-interpretability">Interpretability</a> &middot;
   <a href="#environment-installation">Installation</a> &middot;
   <a href="#quick-start">Usage</a> &middot;
@@ -157,52 +159,118 @@ Extracting condition-modulated attention weights from the Flow Matching Transfor
 
 | Module | Status | Entrypoint |
 | :--- | :---: | :--- |
+| Dataset Preparation (Tables 1–5 & GenePT) | Released | [`examples/prepare_datasets.py`](examples/prepare_datasets.py) |
 | Gene Block Construction | Released | [`examples/gene_block_construction/run_pipeline.py`](examples/gene_block_construction/run_pipeline.py) |
-| Conditional Generation (VAE + OT FM) | Released | [`examples/conditional_generation/run_hca_formal.py`](examples/conditional_generation/run_hca_formal.py) / [`run_hca_smoke.py`](examples/conditional_generation/run_hca_smoke.py) |
+| Conditional Generation (VAE + OT FM) | Released | [`examples/conditional_generation/run_formal.py`](examples/conditional_generation/run_formal.py) / [`run_hca_formal.py`](examples/conditional_generation/run_hca_formal.py) / [`run_hca_smoke.py`](examples/conditional_generation/run_hca_smoke.py) |
 | Conditional Distribution Evaluation | Released | [`examples/conditional_distribution_evaluation/run_example.py`](examples/conditional_distribution_evaluation/run_example.py) |
+| Batch Effect Correction (scIB Benchmark) | Released | [`examples/bec_integration/run_bec.py`](examples/bec_integration/run_bec.py) |
 | Perturbation Prediction (Single & LOO) | Released | [`examples/perturbation_prediction/run_single.py`](examples/perturbation_prediction/run_single.py) / [`run_leave_one_out.py`](examples/perturbation_prediction/run_leave_one_out.py) |
-| Batch Effect Correction (scIB Benchmark) | Planned | — |
+| Unified ICLR 2026 Reproduction | Released | [`examples/reproduce_iclr2026.py`](examples/reproduce_iclr2026.py) · [`notebooks/SAVE_ICLR2026_Reproduce_Colab.ipynb`](notebooks/SAVE_ICLR2026_Reproduce_Colab.ipynb) |
 
 ```text
-src/sc_save_public/   Reusable package code
-examples/             Runnable example entrypoints
-tests/                Public test coverage
+src/sc_save_public/   Reusable package code (datasets, models, generation, BEC, perturbation, eval)
+examples/             Runnable CLI entrypoints & unified ICLR 2026 orchestrator
+notebooks/            Google Colab G4/H100/A100 ICLR 2026 reproduction notebook
+results/              Verified Colab G4 reproduction JSON (iclr2026_colab_repro.json)
+tests/                Offline unit & smoke test coverage
 docs/assets/          Paper figures and visual assets
+REPRODUCIBILITY.md    Detailed ICLR 2026 paper reproduction guide & verified Colab comparison tables
 ```
+
+---
+
+## ICLR 2026 Reproduction Quickstart
+
+[![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/fdu-wangfeilab/sc-save/blob/main/notebooks/SAVE_ICLR2026_Reproduce_Colab.ipynb)
+
+All five quantitative benchmarks (**Tables 1–5**) can be reproduced either in **Google Colab Pro+ (G4 96 GB / H100 / A100)** or locally via [`examples/reproduce_iclr2026.py`](examples/reproduce_iclr2026.py):
+
+```bash
+# Preview execution plan and expected output paths
+python examples/reproduce_iclr2026.py --tasks all --data-root ./data --dry-run
+
+# Run all 5 paper tables end-to-end with GPU & CPU parallelism (auto-saturates >=40/75 GB GPUs)
+python examples/reproduce_iclr2026.py \
+  --tasks all \
+  --data-root ./data \
+  --output-root ./outputs/iclr2026 \
+  --gpu-workers auto \
+  --cpu-workers auto \
+  --prep-workers 4 \
+  --device 0
+
+# Or run a specific table (table1 | table2 | table3 | table4 | table5)
+python examples/reproduce_iclr2026.py --tasks table2 --data-root ./data --output-root ./outputs/iclr2026 --gpu-workers auto --device 0
+```
+
+### Verified Colab G4 Reproduction (`reproduce-iclr2026@307c925`)
+
+All 5 tables (11 datasets) completed on Colab Pro+ (`NVIDIA RTX PRO 6000 Blackwell Server Edition`, `94.97 GB` VRAM, PyTorch `2.14.1+cu130`, CUDA `13.0`, `gpu_workers="auto"` / 4 GPU workers, `cpu_workers="auto"` / 8 CPU workers; `5,295s` / `88m 15s` wall-clock for parallel Tables 1–4, `~7m` for single-run `heart`). Full per-metric tables, dataset dimensions, and variance notes are in [`REPRODUCIBILITY.md`](REPRODUCIBILITY.md) and [`results/iclr2026_colab_repro.json`](results/iclr2026_colab_repro.json):
+
+| Benchmark | Key Metric(s) | Paper Target | Colab G4 Reproduced |
+| :--- | :--- | :---: | :---: |
+| **Table 1** (`pbmc3k` / `dentategyrus` / `tabula_muris`) | WD ($\downarrow$) / MMD ($\downarrow$) | `19.14/1.80` · `9.16/0.17` · `10.86/0.04` | `12.76/0.48` · `8.08/0.11` · `10.65/0.04` |
+| **Table 2** (`heart` / `pbmc` / `lung_atlas`) | WD ($\downarrow$) / MMD ($\downarrow$) | `8.30/0.63` · `5.37/0.29` · `4.37/1.14` | `8.83/0.64` · `5.39/0.30` · `4.42/1.16` |
+| **Table 3** (`lung_cancer` Seen / Unseen) | WD ($\downarrow$) / MMD ($\downarrow$) | `3.10/1.06` · `4.63/2.11` | `3.07/1.08` · `5.39/2.16` |
+| **Table 4** (`lung_atlas` / `heart` / `pbmc` BEC) | scIB ($\uparrow$) | `0.8128` · `0.7983` · `0.8309` | `0.8097` · `0.8019` · `0.8125` |
+| **Table 5** (`pbmc_ifn` 7-fold LOO Average) | PCC ($\uparrow$) / $R^2$ ($\uparrow$) / WD ($\downarrow$) | `0.96` / `0.86` / `5.15` | `0.943` / `0.807` / `5.77` |
+
+See [`REPRODUCIBILITY.md`](REPRODUCIBILITY.md) for dataset URLs, model hyperparameters, hardware timings, Step A vs. parallel rerun notes, and complete Paper vs. Colab G4 comparison tables.
 
 ---
 
 ## Environment Installation
 
-This repository is pinned to the validated `uv` environment below:
+The package supports Python `>= 3.10` and PyTorch `>= 2.2.0` (preserving preinstalled CUDA PyTorch in Colab / workstation environments):
 
-- Python `3.10.16`
-- `numpy 1.26.4`
-- `pandas 2.2.3`
-- `scanpy 1.11.0`
-- `torch 2.5.1`
-- generation dependencies: `einops 0.8.0`, `flow-matching 1.0.10`
+- Core stack: `anndata`, `scanpy`, `POT`, `numpy>=1.26.4`, `pandas>=2.2.0,<3.0`, `scikit-learn`, `scipy`, `torch>=2.2.0`
+- Optional extras in `pyproject.toml`:
+  - `[generation]`: `einops`, `flow-matching`
+  - `[bec]`: `scib`, `igraph`, `leidenalg`
+  - `[datasets]`: `gdown`, `pyyaml`, `requests`
+  - `[all]`: all extras combined
 
 From the repository root:
 
 ```bash
-uv python install 3.10.16
-uv sync --extra generation
-```
+# Using uv
+uv sync --extra all
 
-That command creates `.venv`, installs the package in editable mode, and includes the conditional-generation stack.
+# Or using pip inside an existing CUDA PyTorch environment
+pip install -e ".[all]"
+```
 
 Optional verification:
 
 ```bash
-uv run pytest
-uv run --extra generation python -c "from sc_save_public.conditional_generation import DEFAULT_COND_COLS; print(DEFAULT_COND_COLS)"
+uv run pytest -v
+uv run python examples/reproduce_iclr2026.py --tasks all --dry-run
 ```
 
 Notes:
 
 - `flash-attn` is optional and is not required for the public examples. The released configs keep `is_flash_attn=False`.
-- The public generation path does not require `timm` or `torchvision`.
+- The public workflow does not require `timm`, `torchvision`, or `rpy2`.
+
+---
+
+## Dataset Preparation CLI
+
+Download, standardize, normalize (`log1p`-only for Table 2 dual-condition; `normalize_total(1e4)` + `log1p` for Tables 1, 3, 4, and 5), HVG-filter, and OT-partition (`ot.emd`, `numItermax=1000000`) all ICLR 2026 benchmark datasets and GenePT v2 embeddings via [`examples/prepare_datasets.py`](examples/prepare_datasets.py):
+
+```bash
+# List all registered datasets, verified public URLs, and processed output paths
+python examples/prepare_datasets.py --list-datasets
+
+# Download and preprocess all datasets for Tables 1-5 concurrently
+python examples/prepare_datasets.py --datasets all --data-root ./data --workers auto
+
+# Or prepare a single table group or subset of datasets
+python examples/prepare_datasets.py --datasets table2 --data-root ./data --workers 4
+python examples/prepare_datasets.py --datasets heart pbmc_ifn --data-root ./data --subset-cells 512
+```
+
+Processed `.h5ad` outputs are written under `<data-root>/processed/` alongside `<data-root>/manifest.json`. See [`REPRODUCIBILITY.md`](REPRODUCIBILITY.md) for per-table filenames and source URLs.
 
 ---
 
@@ -308,7 +376,19 @@ Main outputs:
 
 #### Formal Run
 
-Use this when you want the public formal configuration and checkpoint reuse:
+Use `run_formal.py` for arbitrary `--cond-cols` and `--gene-block-size` (Tables 1–3) or `run_hca_formal.py` for the HCA dual-condition preset:
+
+```bash
+uv run --extra generation python examples/conditional_generation/run_formal.py \
+  --data-path /path/to/input.h5ad \
+  --task-name heart \
+  --cond-cols batch cell_type \
+  --gene-block-size 3200 \
+  --output-dir ./outputs/conditional_generation_formal \
+  --device 0
+```
+
+Or using the backwards-compatible HCA preset:
 
 ```bash
 uv run --extra generation python examples/conditional_generation/run_hca_formal.py \
@@ -400,6 +480,7 @@ Loop over all cell types in the dataset:
 ```bash
 uv run python examples/perturbation_prediction/run_leave_one_out.py \
   --data-path /path/to/data.h5ad \
+  --workers auto \
   --output-dir ./outputs/perturbation_leave_one_out
 ```
 
@@ -411,7 +492,27 @@ uv run python examples/perturbation_prediction/run_leave_one_out.py \
   --cell-types CD8T NK B
 ```
 
-In addition to per-cell-type outputs, the leave-one-out script produces a `summary.json` with per-cell-type and average R2, MSE, PCC, and prints a summary table to stdout.
+In addition to per-cell-type outputs, the leave-one-out script produces a `summary.json` with per-cell-type and average R2, MSE, PCC, WD, and MMD, and prints a summary table to stdout.
+
+### Run Batch Effect Correction (BEC + scIB)
+
+The BEC workflow uses `SAVE-B-perturb` (`gene_block_size=400`, `sample_mask_prob=0.0`, `col_msk_threshold=0.6`) with `LDM_raw` conditional batch transfer across every target batch, followed by 30-PC PCA embedding and parallel pure-Python `scib` evaluation (`avg_bio`, `avg_batch`, `scib_score = 0.6 * avg_bio + 0.4 * avg_batch`):
+
+```bash
+python examples/bec_integration/run_bec.py \
+  --data-path ./data/processed/table4_bec/lung_atlas_hvg2000_GBS400.h5ad \
+  --task-name lung_atlas_bec \
+  --output-dir ./outputs/bec_integration/lung_atlas_bec \
+  --scib-workers 8 \
+  --device 0
+```
+
+Main outputs under `--output-dir`:
+
+- `checkpoints/<task_name>.pt`: SAVE checkpoint (automatically reused on rerun unless `--overwrite-ckpt` is passed)
+- `embeddings/transfer_to_<batch>.npy`: 30-PC PCA coordinates aligned to `adata.obs_names`
+- `scib_eval.csv`: per-target-batch `scib` metrics plus `mean` and `std`
+- `report.json`: aggregated `avg_bio`, `avg_batch`, `scib_score`, `PCR_batch`, and sub-metrics matching Table 4
 
 ---
 

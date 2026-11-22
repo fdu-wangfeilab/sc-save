@@ -55,7 +55,7 @@ Per cell type:
 
 Leave-one-out adds:
 
-- `summary.json` — per-cell-type and average R2, MSE, PCC
+- `summary.json` — per-cell-type and average R2, MSE, PCC, WD, and MMD
 
 ## Evaluation Metrics
 
@@ -64,3 +64,5 @@ Predictions are inverse-transformed from scaled space to original expression val
 - **R2** — coefficient of determination (sklearn `r2_score`)
 - **MSE** — mean squared error of per-gene means (sklearn `mean_squared_error`)
 - **PCC** — Pearson correlation of per-gene means (scipy `pearsonr`)
+- **WD** — 2-Wasserstein distance on joint 30-PC PCA coordinates (`2-Wasserstein_PCA`, averaged across 10 balanced random subsamples matching `analysis_perturb_res_w_wdmmd.ipynb`)
+- **MMD** — RBF MMD on joint 30-PC PCA coordinates (`RBF_MMD_PCA`, averaged across 10 balanced random subsamples)

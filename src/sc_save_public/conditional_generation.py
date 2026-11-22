@@ -3,12 +3,15 @@
 from __future__ import annotations
 
 import json
+import re
 import time
 from pathlib import Path
+from typing import Any
 
 import numpy as np
 import scanpy as sc
 import torch
+from scipy import sparse
 from sklearn.preprocessing import MaxAbsScaler
 
 from sc_save_public.models.fm.denoising_model import MLPTimeStep
@@ -55,10 +58,96 @@ def set_seed(seed: int):
 
 
 def get_device(device_id: int) -> torch.device:
-    return torch.device(f"cuda:{device_id}" if torch.cuda.is_available() else "cpu")
+    if device_id < 0 or not torch.cuda.is_available():
+        return torch.device("cpu")
+    return torch.device(f"cuda:{device_id}")
 
 
-def load_and_scale_adata(data_path: str, subset_size: int):
+def _sanitize_name(value: str) -> str:
+    return re.sub(r"[^A-Za-z0-9._-]+", "_", str(value)).strip("_") or "task"
+
+
+def resolve_infer_batch_size(
+    device: torch.device,
+    batch_size: int,
+    min_vram_gb: float = 40.0,
+    target_batch_size: int = 4096,
+) -> int:
+    """Use larger inference batch sizes on >=40 GB GPUs without changing training batch_size."""
+    if device.type == "cuda" and torch.cuda.is_available():
+        try:
+            total_gb = torch.cuda.get_device_properties(device).total_memory / (1024**3)
+            if total_gb >= min_vram_gb:
+                return max(int(batch_size), int(target_batch_size))
+        except RuntimeError:
+            pass
+    return int(batch_size)
+
+
+def _load_torch_state_dict(ckpt_path: Path, device: torch.device):
+    try:
+        return torch.load(ckpt_path, map_location=device, weights_only=False)
+    except TypeError:
+        return torch.load(ckpt_path, map_location=device)
+
+
+def _find_pad_index(adata: sc.AnnData) -> int:
+    try:
+        return list(adata.var_names).index("pad_0")
+    except ValueError:
+        return int(adata.shape[1])
+
+
+def _pad_adata_to_block_size(adata: sc.AnnData, gene_block_size: int):
+    pad_idx = _find_pad_index(adata)
+    if gene_block_size <= 0 or adata.n_vars % gene_block_size == 0:
+        return adata, pad_idx
+    n_pad = gene_block_size - (adata.n_vars % gene_block_size)
+    if sparse.issparse(adata.X):
+        pad_block = sparse.csr_matrix((adata.n_obs, n_pad), dtype=adata.X.dtype)
+        new_x = sparse.hstack([adata.X, pad_block], format="csr")
+    else:
+        pad_block = np.zeros((adata.n_obs, n_pad), dtype=np.asarray(adata.X).dtype)
+        new_x = np.concatenate([np.asarray(adata.X), pad_block], axis=1)
+    start_idx = 0 if "pad_0" not in set(map(str, adata.var_names)) else adata.n_vars
+    pad_names = [f"pad_{start_idx + i}" for i in range(n_pad)]
+    new_var = sc.AnnData(X=new_x[:, :0], var=adata.var).var
+    import pandas as pd  # local import keeps top-level minimal
+
+    full_var = pd.DataFrame(index=list(map(str, adata.var_names)) + pad_names)
+    del new_var
+    padded = sc.AnnData(X=new_x, obs=adata.obs.copy(), var=full_var)
+    return padded, pad_idx
+
+
+def _align_test_to_train_vars(adata_test: sc.AnnData, train_adata: sc.AnnData) -> sc.AnnData:
+    if adata_test.var_names.equals(train_adata.var_names):
+        return adata_test
+    train_names = list(map(str, train_adata.var_names))
+    test_names = list(map(str, adata_test.var_names))
+    if set(train_names).issubset(set(test_names)):
+        return adata_test[:, train_names].copy()
+    test_pad = _find_pad_index(adata_test)
+    train_pad = _find_pad_index(train_adata)
+    if test_pad == train_pad and adata_test.n_vars != train_adata.n_vars:
+        # Align unpadded gene positions and adjust trailing pad block to match train n_vars.
+        test_core = adata_test[:, :test_pad]
+        x_core = test_core.X.toarray() if sparse.issparse(test_core.X) else np.asarray(test_core.X)
+        diff = train_adata.n_vars - test_pad
+        if diff > 0:
+            pad_block = np.zeros((adata_test.n_obs, diff), dtype=x_core.dtype)
+            new_x = np.concatenate([x_core, pad_block], axis=1)
+            return sc.AnnData(X=new_x, obs=adata_test.obs.copy(), var=train_adata.var.copy())
+    if adata_test.n_vars == train_adata.n_vars:
+        aligned = adata_test.copy()
+        aligned.var_names = train_adata.var_names.copy()
+        return aligned
+    raise ValueError(
+        f"Test dataset gene dimension ({adata_test.n_vars}) cannot align to train ({train_adata.n_vars})"
+    )
+
+
+def load_and_scale_adata(data_path: str, subset_size: int, gene_block_size: int = 0):
     print(f"[pipeline] loading data from: {data_path}")
     adata_ori = sc.read_h5ad(data_path)
     if subset_size > 0:
@@ -68,10 +157,10 @@ def load_and_scale_adata(data_path: str, subset_size: int):
         adata_ori = adata_ori.copy()
         print(f"[pipeline] full shape: {adata_ori.shape}")
 
-    try:
-        pad_idx = list(adata_ori.var_names).index("pad_0")
-    except ValueError:
-        pad_idx = adata_ori.shape[1]
+    if gene_block_size > 0:
+        adata_ori, pad_idx = _pad_adata_to_block_size(adata_ori, gene_block_size)
+    else:
+        pad_idx = _find_pad_index(adata_ori)
 
     scaler = MaxAbsScaler()
     adata = adata_ori.copy()
@@ -175,6 +264,7 @@ def attach_formal_fm_model(
     seq_length: int,
     cond_cols,
     num_heads: int = 4,
+    n_blocks: int = 5,
 ):
     denoising_model = MLPTimeStep(
         in_dim=save_model.enc_dim,
@@ -184,7 +274,7 @@ def attach_formal_fm_model(
         embedding_dim=save_model.expand_dim * 2,
         num_conds=len(cond_cols),
         dropout_prob=0.0,
-        n_blocks=5,
+        n_blocks=n_blocks,
         label_encoder_dict=save_model.label_encoder_dict,
         mask_id=save_model.mask_id,
         block_type="DiT",
@@ -229,26 +319,36 @@ def train_fm(save_model: SAVE, fm_epoch: int, batch_size: int):
     return time.time() - start
 
 
-def train_vae_formal(save_model: SAVE, model_kwargs):
+def train_vae_formal(
+    save_model: SAVE,
+    model_kwargs,
+    sample_mask_prob: float = 0.4,
+    col_msk_threshold: float = 1.0,
+):
     print("[pipeline] training formal VAE")
     start = time.time()
     save_model.train(
-        col_msk_threshold=1.0,
+        col_msk_threshold=col_msk_threshold,
         loss_monitor=None,
-        max_sample_mask_prob=0.4,
+        max_sample_mask_prob=sample_mask_prob,
         is_col_wise_mask=False,
         **model_kwargs,
     )
     return time.time() - start
 
 
-def train_fm_formal(save_model: SAVE, model_kwargs):
+def train_fm_formal(
+    save_model: SAVE,
+    model_kwargs,
+    sample_mask_prob: float = 0.4,
+    col_msk_threshold: float = 0.0,
+):
     print("[pipeline] training formal FM")
     start = time.time()
     save_model.fm_train(
-        col_msk_threshold=0.0,
+        col_msk_threshold=col_msk_threshold,
         loss_monitor=None,
-        max_sample_mask_prob=0.4,
+        max_sample_mask_prob=sample_mask_prob,
         is_col_wise_mask=False,
         **model_kwargs,
     )
@@ -280,15 +380,18 @@ def build_formal_ckpt_paths(
     vae_setting: dict,
     gene_block_size: int,
     num_heads: int,
+    task_name: str = "hca_subsampled_20k",
+    ckpt_dir: Path | None = None,
 ):
-    ckpt_dir = out_dir / "ckpt"
-    ckpt_dir.mkdir(parents=True, exist_ok=True)
-    vae_ckpt_path = ckpt_dir / (
-        f"hca_subsampled_20k_VAE_{vae_setting['expand_dim']}_enc"
+    ckpt_root = ckpt_dir if ckpt_dir is not None else out_dir / "ckpt"
+    ckpt_root.mkdir(parents=True, exist_ok=True)
+    stem = _sanitize_name(task_name)
+    vae_ckpt_path = ckpt_root / (
+        f"{stem}_VAE_{vae_setting['expand_dim']}_enc"
         f"{vae_setting['enc_dim']}_GBS{gene_block_size}_head{num_heads}.pt"
     )
-    fm_ckpt_path = ckpt_dir / (
-        f"hca_subsampled_20k_fm_{vae_setting['expand_dim']}_enc"
+    fm_ckpt_path = ckpt_root / (
+        f"{stem}_fm_{vae_setting['expand_dim']}_enc"
         f"{vae_setting['enc_dim']}_GBS{gene_block_size}_head{num_heads}.pt"
     )
     return vae_ckpt_path, fm_ckpt_path
@@ -303,57 +406,93 @@ def run_formal_generation(
     seq_length: int,
     cond_cols,
     out_dir: Path,
+    guidance_weights: float = 2.0,
+    sample_steps: int = 20,
+    split_targets: list[tuple[sc.AnnData, Any]] | None = None,
 ):
-    cond_info = (
-        adata_ori.obs[cond_cols]
-        .value_counts()
-        .rename_axis(cond_cols)
-        .reset_index(name="count")
-    )
+    if split_targets is None:
+        split_targets = [(adata_ori, scaler)]
 
-    gen_adata_list = []
+    split_gen_list = []
+    split_target_list = []
     total_z_fm = []
     total_z_vae = []
+    total_groups = 0
 
     start = time.time()
-    print(f"[pipeline] generating for {cond_info.shape[0]} condition groups")
-    for i in range(cond_info.shape[0]):
-        cond_dict = cond_info.loc[i, cond_cols].to_dict()
-        mask = np.logical_and.reduce([adata_ori.obs[k] == v for k, v in cond_dict.items()])
-        sub_data = adata_ori[mask].copy()
-        print(
-            f"[pipeline] generating group {i + 1}/{cond_info.shape[0]}: "
-            f"{cond_dict} count={sub_data.shape[0]}"
+    infer_batch_size = resolve_infer_batch_size(save_model.device, batch_size)
+    for split_adata_ori, split_scaler in split_targets:
+        cond_info = (
+            split_adata_ori.obs[cond_cols]
+            .value_counts()
+            .rename_axis(cond_cols)
+            .reset_index(name="count")
         )
+        cond_info = cond_info[cond_info["count"] > 0].reset_index(drop=True)
+        total_groups += int(cond_info.shape[0])
 
-        z_from_vae = save_model.get_latent_from_adata(
-            adata=sub_data,
-            is_encode_with_cond=False,
-            latent_pos=0,
-        )
-        gen_data, gen_z_fm = save_model.cond_generate_with_guidance_fm(
-            generate_count=int(cond_info.loc[i, "count"]),
-            target_cond=cond_dict,
-            batch_size=batch_size,
-            guidance_weights=2.0,
-            seq_length=seq_length,
-            sample_steps=20,
-            verbose=True,
-        )
+        split_gen_chunks = []
+        split_target_chunks = []
+        print(f"[pipeline] generating for {cond_info.shape[0]} condition groups")
+        for i in range(cond_info.shape[0]):
+            cond_dict = cond_info.loc[i, cond_cols].to_dict()
+            for col, val in cond_dict.items():
+                classes = set(save_model.label_encoder_dict[col].classes_.tolist())
+                if val not in classes:
+                    raise ValueError(
+                        f"Category {val!r} in condition column {col!r} was not seen during training."
+                    )
 
-        gen_adata_list.append(gen_data)
-        total_z_fm.append(gen_z_fm)
-        total_z_vae.append(z_from_vae)
+            mask = np.logical_and.reduce(
+                [split_adata_ori.obs[k] == v for k, v in cond_dict.items()]
+            )
+            sub_data = split_adata_ori[mask].copy()
+            print(
+                f"[pipeline] generating group {i + 1}/{cond_info.shape[0]}: "
+                f"{cond_dict} count={sub_data.shape[0]}"
+            )
 
-    gen_adata = sc.concat(gen_adata_list)
-    total_z_fm = np.concatenate(total_z_fm, axis=0)
-    total_z_vae = np.concatenate(total_z_vae, axis=0)
+            group_infer_bs = min(infer_batch_size, max(1, sub_data.n_obs))
+            z_from_vae = save_model.get_latent_from_adata(
+                batch_size=group_infer_bs,
+                adata=sub_data,
+                is_encode_with_cond=False,
+                latent_pos=0,
+            )
+            gen_data, gen_z_fm = save_model.cond_generate_with_guidance_fm(
+                generate_count=int(cond_info.loc[i, "count"]),
+                target_cond=cond_dict,
+                batch_size=group_infer_bs,
+                guidance_weights=guidance_weights,
+                seq_length=seq_length,
+                sample_steps=sample_steps,
+                verbose=True,
+            )
 
-    gen_adata.X = scaler.inverse_transform(gen_adata.X)
+            gen_data.obs_names = [
+                f"{len(split_gen_list)}_{i}_{k}_gen" for k in range(gen_data.shape[0])
+            ]
+            split_gen_chunks.append(gen_data)
+            split_target_chunks.append(sub_data)
+            total_z_fm.append(gen_z_fm)
+            total_z_vae.append(z_from_vae)
+
+        if split_gen_chunks:
+            split_gen = sc.concat(split_gen_chunks)
+            split_gen.X = split_scaler.inverse_transform(split_gen.X)
+            split_target = sc.concat(split_target_chunks)
+            split_gen_list.append(split_gen)
+            split_target_list.append(split_target)
+
+    gen_adata = sc.concat(split_gen_list) if len(split_gen_list) > 1 else split_gen_list[0].copy()
+    target_adata = (
+        sc.concat(split_target_list) if len(split_target_list) > 1 else split_target_list[0].copy()
+    )
+    total_z_fm_arr = np.concatenate(total_z_fm, axis=0)
+    total_z_vae_arr = np.concatenate(total_z_vae, axis=0)
+
     gen_adata.obs["type"] = "gen"
     gen_adata.obs.index = [f"{idx}_gen" for idx in range(gen_adata.shape[0])]
-
-    target_adata = adata_ori.copy()
     target_adata.obs["type"] = "ori"
 
     gen_trim = gen_adata[:, :pad_idx].copy()
@@ -366,16 +505,16 @@ def run_formal_generation(
 
     gen_trim.write_h5ad(gen_path)
     target_trim.write_h5ad(target_path)
-    np.save(fm_latent_path, total_z_fm)
-    np.save(vae_latent_path, total_z_vae)
+    np.save(fm_latent_path, total_z_fm_arr)
+    np.save(vae_latent_path, total_z_vae_arr)
 
     return {
         "generation_seconds": round(time.time() - start, 3),
-        "condition_group_count": int(cond_info.shape[0]),
+        "condition_group_count": total_groups,
         "gen_shape": list(gen_trim.shape),
         "target_shape": list(target_trim.shape),
-        "gen_z_shape": list(total_z_fm.shape),
-        "vae_z_shape": list(total_z_vae.shape),
+        "gen_z_shape": list(total_z_fm_arr.shape),
+        "vae_z_shape": list(total_z_vae_arr.shape),
         "generation_path": str(gen_path),
         "target_path": str(target_path),
         "gen_z_path": str(fm_latent_path),
@@ -570,7 +709,7 @@ def run_hca_formal(
     if fm_ckpt_path.exists():
         print(f"[pipeline] loading formal FM checkpoint: {fm_ckpt_path}")
         save_model.fm.denoising_model.load_state_dict(
-            torch.load(fm_ckpt_path, map_location=device)
+            _load_torch_state_dict(fm_ckpt_path, device)
         )
         fm_seconds = 0.0
         fm_loaded = True
@@ -622,10 +761,245 @@ def run_hca_formal(
     return report
 
 
+def run_formal_conditional_generation(
+    data_path: str,
+    output_dir: str = DEFAULT_FORMAL_OUTPUT_DIR,
+    device_id: int = 0,
+    cond_cols: list[str] | None = None,
+    task_name: str = "conditional_generation",
+    gene_block_size: int = 3200,
+    latent_block_size: int | None = None,
+    vae_epoch: int = 200,
+    fm_epoch: int = 200,
+    batch_size: int = 1024,
+    lr: float = 1e-4,
+    weight_decay: float = 2.5e-5,
+    kl_scale: float = 0.5,
+    expand_dim: int = 512,
+    enc_dim: int = 64,
+    hidden_dim: int = 64,
+    num_heads: int = 4,
+    n_fm_blocks: int = 5,
+    guidance_weights: float = 2.0,
+    sample_steps: int = 20,
+    sample_mask_prob: float | None = None,
+    vae_col_msk_threshold: float = 1.0,
+    fm_col_msk_threshold: float = 0.0,
+    test_data_path: str | None = None,
+    eval_split: str = "auto",
+    seed: int = 1202,
+    subset_size: int = 0,
+    ckpt_dir: str | None = None,
+    overwrite_ckpt: bool = False,
+) -> dict[str, Any]:
+    """Run generalized SAVE + FM formal conditional generation for Tables 1-3."""
+    if cond_cols is None:
+        cond_cols = list(DEFAULT_COND_COLS)
+    else:
+        cond_cols = list(cond_cols)
+
+    if latent_block_size is None:
+        latent_block_size = gene_block_size
+    if sample_mask_prob is None:
+        effective_sample_mask_prob = 0.0 if task_name in {"cancer_lung", "lung_cancer"} else 0.4
+    else:
+        effective_sample_mask_prob = float(sample_mask_prob)
+
+    if eval_split not in {"auto", "train", "test", "all"}:
+        raise ValueError(f"Unsupported eval_split: {eval_split}")
+
+    set_seed(seed)
+    out_dir = Path(output_dir)
+    out_dir.mkdir(parents=True, exist_ok=True)
+    device = get_device(device_id)
+
+    adata_train_ori, adata_train, train_scaler, pad_idx = load_and_scale_adata(
+        data_path=data_path,
+        subset_size=subset_size,
+        gene_block_size=gene_block_size,
+    )
+    for col in cond_cols:
+        if col not in adata_train_ori.obs.columns:
+            raise ValueError(f"Training AnnData missing required obs column: '{col}'")
+
+    effective_batch_size = min(batch_size, max(1, adata_train_ori.n_obs))
+    model_kwargs, vae_setting, train_setting = load_formal_settings(num_heads=num_heads)
+    vae_setting.update(
+        {
+            "kl_scale": kl_scale,
+            "hidden_dim": hidden_dim,
+            "enc_dim": enc_dim,
+            "expand_dim": expand_dim,
+            "gene_block_size": gene_block_size,
+            "latent_block_size": latent_block_size,
+        }
+    )
+    train_setting.update(
+        {
+            "lr": lr,
+            "batch_size": effective_batch_size,
+            "weight_decay": weight_decay,
+        }
+    )
+    model_kwargs.update(vae_setting)
+    model_kwargs.update(train_setting)
+    model_kwargs["seed"] = seed
+
+    save_model = create_save_model_from_kwargs(
+        adata=adata_train,
+        device=device,
+        cond_cols=cond_cols,
+        model_kwargs=model_kwargs,
+    )
+
+    ckpt_root = Path(ckpt_dir) if ckpt_dir is not None else out_dir / "ckpt"
+    vae_ckpt_path, fm_ckpt_path = build_formal_ckpt_paths(
+        out_dir=out_dir,
+        vae_setting=vae_setting,
+        gene_block_size=gene_block_size,
+        num_heads=num_heads,
+        task_name=task_name,
+        ckpt_dir=ckpt_root,
+    )
+
+    vae_train_kwargs = dict(model_kwargs)
+    vae_train_kwargs["epoch"] = vae_epoch
+    if vae_ckpt_path.exists() and not overwrite_ckpt:
+        print(f"[pipeline] loading formal VAE checkpoint: {vae_ckpt_path}")
+        save_model.load_ckpt(str(vae_ckpt_path))
+        vae_seconds = 0.0
+        vae_loaded = True
+    else:
+        vae_seconds = train_vae_formal(
+            save_model,
+            model_kwargs=vae_train_kwargs,
+            sample_mask_prob=effective_sample_mask_prob,
+            col_msk_threshold=vae_col_msk_threshold,
+        )
+        save_model.save_ckpt(str(vae_ckpt_path))
+        vae_loaded = False
+
+    seq_length = adata_train_ori.shape[1] // gene_block_size
+    if seq_length < 1 or adata_train_ori.shape[1] % gene_block_size != 0:
+        raise ValueError(
+            f"Input gene count {adata_train_ori.shape[1]} must be a positive multiple of gene_block_size={gene_block_size}"
+        )
+
+    attach_formal_fm_model(
+        save_model,
+        seq_length=seq_length,
+        cond_cols=cond_cols,
+        num_heads=num_heads,
+        n_blocks=n_fm_blocks,
+    )
+
+    fm_train_kwargs = dict(model_kwargs)
+    fm_train_kwargs["epoch"] = fm_epoch
+    if fm_ckpt_path.exists() and not overwrite_ckpt:
+        print(f"[pipeline] loading formal FM checkpoint: {fm_ckpt_path}")
+        save_model.fm.denoising_model.load_state_dict(
+            _load_torch_state_dict(fm_ckpt_path, device)
+        )
+        fm_seconds = 0.0
+        fm_loaded = True
+    else:
+        fm_seconds = train_fm_formal(
+            save_model,
+            model_kwargs=fm_train_kwargs,
+            sample_mask_prob=effective_sample_mask_prob,
+            col_msk_threshold=fm_col_msk_threshold,
+        )
+        torch.save(save_model.fm.denoising_model.state_dict(), fm_ckpt_path)
+        fm_loaded = False
+
+    split_targets: list[tuple[sc.AnnData, Any]] = [(adata_train_ori, train_scaler)]
+    resolved_split = eval_split
+    if test_data_path is not None:
+        adata_test_raw = sc.read_h5ad(test_data_path)
+        for col in cond_cols:
+            if col not in adata_test_raw.obs.columns:
+                raise ValueError(f"Test AnnData missing required obs column: '{col}'")
+        adata_test_ori = _align_test_to_train_vars(adata_test_raw, adata_train_ori)
+        test_scaler = MaxAbsScaler()
+        test_scaler.fit(adata_test_ori.X)
+
+        if resolved_split == "auto":
+            resolved_split = (
+                "all"
+                if (task_name in {"cancer_lung", "lung_cancer"} or len(cond_cols) >= 3)
+                else "test"
+            )
+
+        if resolved_split == "all":
+            split_targets = [
+                (adata_train_ori, train_scaler),
+                (adata_test_ori, test_scaler),
+            ]
+        elif resolved_split == "test":
+            split_targets = [(adata_test_ori, test_scaler)]
+        elif resolved_split == "train":
+            split_targets = [(adata_train_ori, train_scaler)]
+    elif resolved_split == "auto":
+        resolved_split = "train"
+    elif resolved_split in {"test", "all"}:
+        raise ValueError(f"eval_split='{resolved_split}' requires test_data_path to be set")
+
+    gen_report = run_formal_generation(
+        save_model=save_model,
+        adata_ori=adata_train_ori,
+        scaler=train_scaler,
+        pad_idx=pad_idx,
+        batch_size=effective_batch_size,
+        seq_length=seq_length,
+        cond_cols=cond_cols,
+        out_dir=out_dir,
+        guidance_weights=guidance_weights,
+        sample_steps=sample_steps,
+        split_targets=split_targets,
+    )
+
+    report = {
+        "task_name": task_name,
+        "data_path": data_path,
+        "test_data_path": test_data_path,
+        "eval_split": resolved_split,
+        "input_shape": list(adata_train_ori.shape),
+        "trimmed_gene_dim": int(pad_idx),
+        "device": str(device),
+        "condition_cols": cond_cols,
+        "vae_loaded_from_ckpt": vae_loaded,
+        "fm_loaded_from_ckpt": fm_loaded,
+        "vae_seconds": round(vae_seconds, 3),
+        "fm_seconds": round(fm_seconds, 3),
+        "vae_ckpt_path": str(vae_ckpt_path),
+        "fm_ckpt_path": str(fm_ckpt_path),
+        "vae_epoch": vae_epoch,
+        "fm_epoch": fm_epoch,
+        "sample_mask_prob": effective_sample_mask_prob,
+        "guidance_weights": guidance_weights,
+        "sample_steps": sample_steps,
+        "gene_block_size": gene_block_size,
+        "latent_block_size": latent_block_size,
+        "num_heads": num_heads,
+        "model_kwargs": model_kwargs,
+        "vae_setting": vae_setting,
+        "train_setting": train_setting,
+    }
+    report.update(gen_report)
+
+    report_path = out_dir / "report.json"
+    with open(report_path, "w") as handle:
+        json.dump(report, handle, indent=2)
+
+    print(f"[pipeline] generalized formal run ({task_name}) done -> {report_path}")
+    return report
+
+
 __all__ = [
     "DEFAULT_COND_COLS",
     "DEFAULT_FORMAL_OUTPUT_DIR",
     "DEFAULT_OUTPUT_DIR",
+    "run_formal_conditional_generation",
     "run_hca_formal",
     "run_hca_smoke",
 ]
