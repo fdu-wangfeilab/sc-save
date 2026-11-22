@@ -41,13 +41,6 @@
 - **Latent Flow Matching Tech Stack (Gene-Block VAE + DiT OT-FM):** Compresses structured gene blocks ($X \in \mathbb{R}^{N \times L \times K}$) into a compact biological latent space ($z \in \mathbb{R}^{N \times L \times d}$) via a Gene-Block Attention VAE, then trains a **DiT-based Conditional Optimal-Transport Flow Matching** model (`AdaLN`, independent condition masking $p = 0.6$, multi-condition Classifier-Free Guidance) in latent space—unifying 1–5 condition generation (including unseen combinations), zero-shot batch correction, and out-of-sample perturbation prediction across **8 benchmarks** with one fixed configuration.
 - **Ultra-High Efficiency (191× Speedup & 20-Step ODE Sampling):** Grouping $G \approx 19{,}112$ flat genes into $L = 6$ semantic blocks collapses self-attention complexity from $\mathcal{O}(G^2)$ to $\mathcal{O}(L^2)$, cutting single-RTX-3090 (24 GB) training time from **2,391.2 min (~40 h)** down to **12.5 min (191× speedup; 266× / 9.0 min at $K=5600$)**—and **~7 min** per run on Colab G4 with SDPA/TF32/`bfloat16` FM and 20-step sampling—while learning biologically interpretable pathway attention.
 
-<p align="center">
-  <img src="docs/assets/framework.png" width="96%" alt="SAVE Architecture Overview" />
-</p>
-<p align="center">
-  <em><strong>Figure 1. Overview of SAVE.</strong> (Left) LLM-embedded NCBI gene summaries are clustered via Optimal Transport into balanced gene blocks ($X \in \mathbb{R}^{N \times L \times K}$). (Bottom) A Gene-Block Attention VAE compresses profiles into pathway-structured latents $z \in \mathbb{R}^{N \times L \times d}$. (Top) Latent Conditional Optimal-Transport Flow Matching with AdaLN and condition masking generates unseen multi-condition cell states, corrects batch effects, and transfers perturbations.</em>
-</p>
-
 ### LLM Semantic Gene Blocks vs. ViT Patchify
 
 Standard Transformer models either attend over ~20,000 flat genes ($\mathcal{O}(G^2)$ memory/time bottleneck) or lack a spatial 2D neighborhood for Vision Transformer (ViT) grid patching. SAVE replaces spatial proximity with **LLM semantic similarity + balanced Optimal Transport soft-patching** before feeding structured tokens into the **Latent VAE + Latent Flow Matching** stack:
@@ -56,7 +49,7 @@ Standard Transformer models either attend over ~20,000 flat genes ($\mathcal{O}(
   <img src="docs/assets/geneblock_vs_vit.png" width="96%" alt="ViT Patchify vs. SAVE LLM-Guided Gene Block Mechanism" />
 </p>
 <p align="center">
-  <em><strong>Figure 2. ViT Patchify (Vision) vs. SAVE Gene Block Mechanism (Genomics).</strong> Instead of hard-patching a structured 2D pixel grid by Euclidean proximity, SAVE extracts 1,536-dim LLM semantic embeddings from NCBI gene summaries (Stage 1) and performs balanced Optimal Transport clustering (Stage 2) to form pathway-coupled Gene Blocks for downstream Latent VAE compression and Latent Flow Matching.</em>
+  <em><strong>Figure 1. ViT Patchify (Vision) vs. SAVE Gene Block Mechanism (Genomics).</strong> Instead of hard-patching a structured 2D pixel grid by Euclidean proximity, SAVE extracts 1,536-dim LLM semantic embeddings from NCBI gene summaries (Stage 1) and performs balanced Optimal Transport clustering (Stage 2) to form pathway-coupled Gene Blocks for downstream Latent VAE compression and Latent Flow Matching.</em>
 </p>
 
 1. **Stage 1 — LLM Semantic Embedding:** Curated NCBI Gene text descriptions are encoded with a pre-trained LLM (`text-embedding-ada-002`, GenePT) into continuous 1,536-dim semantic vectors $g_i$, injecting prior biological functional knowledge directly into tokenization.
@@ -69,6 +62,17 @@ Standard Transformer models either attend over ~20,000 flat genes ($\mathcal{O}(
 | **Patching Type** | Hard-patching (fixed spatial grid) | **Semantic soft-patching (iterative balanced Optimal Transport clustering)** |
 | **Token Properties** | Functionally agnostic image patches | **Functionally coupled pathway blocks** (coherent gene programs) |
 | **Downstream Stack & Efficiency** | Flat patch ViT attention | **Latent VAE + Latent OT Flow Matching** ($\mathcal{O}(L^2)$ attention, **191× training speedup**: 12.5 min vs. 2,391.2 min on RTX 3090) |
+
+### End-to-End Architecture: Latent VAE + Latent Flow Matching
+
+Once LLM-guided Optimal Transport constructs balanced Gene Blocks ($X \in \mathbb{R}^{N \times L \times K}$), a Gene-Block Attention VAE compresses expressions into compact latents $z \in \mathbb{R}^{N \times L \times d}$, where DiT Conditional Optimal-Transport Flow Matching models multi-condition cellular trajectories in 20 ODE steps:
+
+<p align="center">
+  <img src="docs/assets/framework.png" width="96%" alt="SAVE Architecture Overview" />
+</p>
+<p align="center">
+  <em><strong>Figure 2. Overview of SAVE.</strong> (Left) LLM-embedded NCBI gene summaries are clustered via Optimal Transport into balanced gene blocks ($X \in \mathbb{R}^{N \times L \times K}$). (Bottom) A Gene-Block Attention VAE compresses profiles into pathway-structured latents $z \in \mathbb{R}^{N \times L \times d}$. (Top) Latent Conditional Optimal-Transport Flow Matching with AdaLN and condition masking generates unseen multi-condition cell states, corrects batch effects, and transfers perturbations.</em>
+</p>
 
 ---
 

@@ -33,8 +33,8 @@
         <span class="brand-venue">ICLR 2026</span>
       </a>
       <nav class="site-nav" aria-label="Page sections">
+        <a href="#gene-blocks">LLM Embedding</a>
         <a href="#overview">Overview</a>
-        <a href="#gene-blocks">LLM vs. ViT</a>
         <a href="#results">Results</a>
         <a href="#interpretability">Interpretability</a>
         <a href="#reproduce">Reproduce</a>
@@ -130,24 +130,16 @@
         </article>
       </div>
 
-      <figure class="figure-card">
-        <button class="figure-zoom" type="button" data-title="Figure 1 — Overview of SAVE" aria-label="Zoom Figure 1: Overview of SAVE">
-          <img src="./assets/framework.png" alt="SAVE framework overview: Gene Block Construction via Optimal Transport, Gene Block Attention VAE, and Conditional Flow Matching Network with AdaLN" width="1672" height="941">
-          <span class="figure-zoom-hint">Click figure to inspect full resolution ↗</span>
-        </button>
-        <figcaption class="figure-caption"><strong>Figure 1. Overview of SAVE.</strong> <em>Left:</em> LLM-embedded NCBI gene summaries are clustered via Optimal Transport into balanced gene blocks (<em>X</em> ∈ ℝ<sup><em>N</em>×<em>L</em>×<em>K</em></sup>). <em>Bottom:</em> A Gene-Block Attention VAE compresses profiles into pathway-structured latents <em>z</em> ∈ ℝ<sup><em>N</em>×<em>L</em>×<em>d</em></sup>. <em>Top:</em> Latent Conditional Optimal-Transport Flow Matching with AdaLN and condition masking generates unseen multi-condition cell states, corrects batch effects, and transfers perturbations.</figcaption>
-      </figure>
-
       <div id="gene-blocks" class="subsection-block">
         <h3>LLM Semantic Gene Blocks vs. ViT Patchify</h3>
         <p class="result-note">Standard Transformer models either attend over ~20,000 flat genes (<em>O</em>(<em>G</em><sup>2</sup>) memory/time bottleneck) or lack a spatial 2D neighborhood for Vision Transformer (ViT) grid patching. SAVE replaces spatial proximity with <strong>LLM semantic similarity + balanced Optimal Transport soft-patching</strong> before feeding structured tokens into the <strong>Latent VAE + Latent Flow Matching</strong> stack.</p>
 
         <figure class="figure-card">
-          <button class="figure-zoom" type="button" data-title="Figure 2 — ViT Patchify vs. SAVE Gene Block Mechanism" aria-label="Zoom Figure 2: ViT Patchify vs. SAVE Gene Block Mechanism">
-            <img src="./assets/geneblock_vs_vit.png" alt="ViT Patchify (Vision) vs. SAVE LLM-Guided Gene Block Mechanism (Genomics)" width="1698" height="926" loading="lazy">
+          <button class="figure-zoom" type="button" data-title="Figure 1 — ViT Patchify vs. SAVE Gene Block Mechanism" aria-label="Zoom Figure 1: ViT Patchify vs. SAVE Gene Block Mechanism">
+            <img src="./assets/geneblock_vs_vit.png" alt="ViT Patchify (Vision) vs. SAVE LLM-Guided Gene Block Mechanism (Genomics)" width="1698" height="926">
             <span class="figure-zoom-hint">Click figure to inspect full resolution ↗</span>
           </button>
-          <figcaption class="figure-caption"><strong>Figure 2. ViT Patchify (Vision) vs. SAVE Gene Block Mechanism (Genomics).</strong> Instead of hard-patching a structured 2D pixel grid by Euclidean proximity, SAVE extracts 1,536-dim LLM semantic embeddings from NCBI gene summaries (Stage 1) and performs balanced Optimal Transport clustering (Stage 2) to form pathway-coupled Gene Blocks for downstream Latent VAE compression and Latent Flow Matching.</figcaption>
+          <figcaption class="figure-caption"><strong>Figure 1. ViT Patchify (Vision) vs. SAVE Gene Block Mechanism (Genomics).</strong> Instead of hard-patching a structured 2D pixel grid by Euclidean proximity, SAVE extracts 1,536-dim LLM semantic embeddings from NCBI gene summaries (Stage 1) and performs balanced Optimal Transport clustering (Stage 2) to form pathway-coupled Gene Blocks for downstream Latent VAE compression and Latent Flow Matching.</figcaption>
         </figure>
 
         <ol class="stage-list">
@@ -193,6 +185,19 @@
             </tbody>
           </table>
         </div>
+      </div>
+
+      <div id="architecture" class="subsection-block">
+        <h3>End-to-End Architecture: Latent VAE + Latent Flow Matching</h3>
+        <p class="result-note">Once LLM embeddings and Optimal Transport partition profiles into <em>L</em> pathway-coherent Gene Blocks, a Gene-Block Attention VAE compresses expressions into compact latents <em>z</em> ∈ ℝ<sup><em>N</em>×<em>L</em>×<em>d</em></sup> where masked DiT Optimal-Transport Flow Matching learns conditional cellular trajectories in just 20 ODE steps.</p>
+
+        <figure class="figure-card">
+          <button class="figure-zoom" type="button" data-title="Figure 2 — Overview of SAVE" aria-label="Zoom Figure 2: Overview of SAVE">
+            <img src="./assets/framework.png" alt="SAVE framework overview: Gene Block Construction via Optimal Transport, Gene Block Attention VAE, and Conditional Flow Matching Network with AdaLN" width="1672" height="941" loading="lazy">
+            <span class="figure-zoom-hint">Click figure to inspect full resolution ↗</span>
+          </button>
+          <figcaption class="figure-caption"><strong>Figure 2. Overview of SAVE.</strong> <em>Left:</em> LLM-embedded NCBI gene summaries are clustered via Optimal Transport into balanced gene blocks (<em>X</em> ∈ ℝ<sup><em>N</em>×<em>L</em>×<em>K</em></sup>). <em>Bottom:</em> A Gene-Block Attention VAE compresses profiles into pathway-structured latents <em>z</em> ∈ ℝ<sup><em>N</em>×<em>L</em>×<em>d</em></sup>. <em>Top:</em> Latent Conditional Optimal-Transport Flow Matching with AdaLN and condition masking generates unseen multi-condition cell states, corrects batch effects, and transfers perturbations.</figcaption>
+        </figure>
       </div>
     </section>
 
