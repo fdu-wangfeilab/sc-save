@@ -9,7 +9,7 @@ from datetime import datetime, timezone
 import json
 import math
 import os
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 import struct
 import time
 from typing import Any, Sequence
@@ -965,6 +965,29 @@ def _download_gdrive_file(
     return dest
 
 
+def _select_genept_zip_member(zf: zipfile.ZipFile, zip_dest: Path) -> str:
+    """Locate the GenePT v2 model-3 text embedding pickle inside the downloaded ZIP."""
+    candidates = [
+        info.filename
+        for info in zf.infolist()
+        if not info.is_dir()
+        and not info.filename.startswith("__MACOSX/")
+        and "/__MACOSX/" not in info.filename
+        and PurePosixPath(info.filename).name.rstrip(".") == GENEPT_PICKLE_NAME
+    ]
+    if not candidates:
+        raise KeyError(
+            f"Could not find {GENEPT_PICKLE_NAME} inside {zip_dest}; "
+            f"entries preview: {[info.filename for info in zf.infolist()[:20]]}"
+        )
+    exact = [
+        member
+        for member in candidates
+        if PurePosixPath(member).name == GENEPT_PICKLE_NAME
+    ]
+    return exact[0] if exact else candidates[0]
+
+
 def ensure_genept_embeddings(
     data_root: str | Path,
     gene_embedding_path: str | Path | None = None,
@@ -1001,21 +1024,19 @@ def ensure_genept_embeddings(
 
     pickle_dest.parent.mkdir(parents=True, exist_ok=True)
     tmp_pickle = pickle_dest.with_suffix(".pickle.part")
-    with zipfile.ZipFile(zip_dest, "r") as zf:
-        matches = [
-            member for member in zf.namelist() if member.endswith(GENEPT_PICKLE_NAME)
-        ]
-        if not matches:
-            raise KeyError(
-                f"Could not find {GENEPT_PICKLE_NAME} inside {zip_dest}"
-            )
-        with zf.open(matches[0]) as src_f, open(tmp_pickle, "wb") as dst_f:
-            while True:
-                buf = src_f.read(4 * 1024 * 1024)
-                if not buf:
-                    break
-                dst_f.write(buf)
-    os.replace(tmp_pickle, pickle_dest)
+    try:
+        with zipfile.ZipFile(zip_dest, "r") as zf:
+            selected_member = _select_genept_zip_member(zf, zip_dest)
+            with zf.open(selected_member) as src_f, open(tmp_pickle, "wb") as dst_f:
+                while True:
+                    buf = src_f.read(4 * 1024 * 1024)
+                    if not buf:
+                        break
+                    dst_f.write(buf)
+        os.replace(tmp_pickle, pickle_dest)
+    except Exception:
+        tmp_pickle.unlink(missing_ok=True)
+        raise
     return pickle_dest
 
 

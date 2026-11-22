@@ -609,3 +609,51 @@ def test_table5_pbmc_ifn_and_cli_manifest(tmp_path: Path) -> None:
     manifest = json.loads(manifest_path.read_text())
     assert "pbmc_ifn" in manifest["datasets"]
     assert manifest["datasets"]["pbmc_ifn"]["n_vars"] == 2000
+
+
+def test_ensure_genept_embeddings_trailing_dot_and_exact_preference(
+    tmp_path: Path,
+) -> None:
+    # 1. Exact Zenodo archive layout with trailing dot on model_3_text.pickle.
+    root_dot = tmp_path / "dot_case"
+    zip_dot = root_dot / "raw" / "genept" / "GenePT_emebdding_v2.zip"
+    zip_dot.parent.mkdir(parents=True, exist_ok=True)
+    expected_embs = _make_fake_embeddings(["TP53", "GAPDH"], dim=4, seed=9)
+    with zipfile.ZipFile(zip_dot, "w") as zf:
+        zf.writestr("GenePT_emebdding_v2/", b"")
+        zf.writestr(
+            f"__MACOSX/GenePT_emebdding_v2/{ds.GENEPT_PICKLE_NAME}",
+            b"macos-resource-fork",
+        )
+        zf.writestr("GenePT_emebdding_v2/NCBI_UniProt_summary_of_genes.json", b"{}")
+        zf.writestr("GenePT_emebdding_v2/GenePT_gene_embedding_ada_text.pickle", b"ada")
+        zf.writestr(
+            f"GenePT_emebdding_v2/{ds.GENEPT_PICKLE_NAME}.",
+            pickle.dumps(expected_embs),
+        )
+        zf.writestr("GenePT_emebdding_v2/NCBI_summary_of_genes.json", b"{}")
+
+    extracted = ds.ensure_genept_embeddings(root_dot)
+    assert extracted == root_dot / "genept" / ds.GENEPT_PICKLE_NAME
+    loaded = pickle.loads(extracted.read_bytes())
+    assert set(loaded.keys()) == {"TP53", "GAPDH"}
+    assert np.allclose(loaded["TP53"], expected_embs["TP53"])
+
+    # 2. When both trailing-dot and exact match exist, prefer exact match.
+    root_exact = tmp_path / "exact_case"
+    zip_exact = root_exact / "raw" / "genept" / "GenePT_emebdding_v2.zip"
+    zip_exact.parent.mkdir(parents=True, exist_ok=True)
+    exact_embs = _make_fake_embeddings(["EXACT_GENE"], dim=4, seed=11)
+    with zipfile.ZipFile(zip_exact, "w") as zf:
+        zf.writestr(
+            f"GenePT_emebdding_v2/{ds.GENEPT_PICKLE_NAME}.",
+            pickle.dumps(expected_embs),
+        )
+        zf.writestr(
+            f"GenePT_emebdding_v2/{ds.GENEPT_PICKLE_NAME}",
+            pickle.dumps(exact_embs),
+        )
+
+    extracted_exact = ds.ensure_genept_embeddings(root_exact)
+    loaded_exact = pickle.loads(extracted_exact.read_bytes())
+    assert set(loaded_exact.keys()) == {"EXACT_GENE"}
