@@ -1,4 +1,4 @@
-"""Public SAVE model stack used by the conditional generation example."""
+"""Backward-compatible exports for the public SAVE model stack."""
 
 from .save_model import SAVE
 
