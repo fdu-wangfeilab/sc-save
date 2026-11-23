@@ -13,7 +13,7 @@ SRC_DIR = ROOT / "src"
 if str(SRC_DIR) not in sys.path:
     sys.path.insert(0, str(SRC_DIR))
 
-from sc_save_public.datasets import (
+from sc_save.data.datasets import (
     DEFAULT_OT_NUM_ITER_MAX,
     GENEPT_ZENODO_URL,
     ensure_genept_embeddings,

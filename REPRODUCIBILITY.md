@@ -18,7 +18,7 @@ This guide documents how to reproduce all five quantitative benchmarks (Tables 1
 4. [Model Architecture & Hyperparameter Configuration](#4-model-architecture--hyperparameter-configuration)
 5. [Option A: One-Click Google Colab Reproduction (Recommended)](#5-option-a-one-click-google-colab-reproduction-recommended)
 6. [Option B: Local CLI Reproduction](#6-option-b-local-cli-reproduction)
-7. [Paper Target vs. Colab G4 Reproduction Results (`reproduce-iclr2026@307c925`)](#7-paper-target-vs-colab-g4-reproduction-results-reproduce-iclr2026307c925)
+7. [Paper Target vs. Verified v1 Colab G4 Baseline (`reproduce-iclr2026@307c925`)](#7-paper-target-vs-verified-v1-colab-g4-baseline-reproduce-iclr2026307c925)
 
 ---
 
@@ -41,17 +41,19 @@ This guide documents how to reproduce all five quantitative benchmarks (Tables 1
 | Environment | GPU / VRAM | System RAM | Expected Runtime | Notes |
 | :--- | :--- | :--- | :--- | :--- |
 | **Paper Reference** | NVIDIA RTX 3090 (24 GB) | 64 GB+ | ~12.5 min per run on Heart ($K=3200, L=6$) | $191\times$ speedup over $K=1$ naive attention (2391.2 min) |
-| **Google Colab Pro+ (Recommended)** | NVIDIA G4 (96 GB), H100 (80 GB), or A100 (40/80 GB) | High-RAM (51–167 GB) | ~1–4 min per dataset; full Tables 1–5 parallelized via `--gpu-workers auto` | TF32, SDPA, `bfloat16` FM autocast, GPU-resident batching, precomputed VAE latents, & Drive cache |
+| **Google Colab Pro+ (Recommended)** | NVIDIA G4 (96 GB), H100 (80 GB), or A100 (40/80 GB) | High-RAM (51–167 GB) | v1 baseline: ~7 min Heart / 88m 15s Tables 1–4 parallel (`v0.2.0` Colab GPU timings pending validation) | v1 used TF32, SDPA, `bfloat16` FM autocast & Drive cache; v2 adds GPU-resident batching, precomputed VAE latents, & batched `generate_like`/`transfer` |
 | **Local Workstation** | CUDA GPU ($\ge$ 16 GB VRAM) | 32 GB+ (64 GB recommended for Lung Cancer) | Comparable or faster than RTX 3090 | Use `--device 0 --gpu-workers auto --cpu-workers auto` |
 
 ### Software & Acceleration Notes
 
-- **Python**: 3.10+ (Colab default Python 3.10/3.11+ supported; local `uv` environment pinned to `3.10.16`).
-- **PyTorch**: Preserve Colab's preinstalled CUDA-enabled PyTorch (do not downgrade PyTorch when installing `sc-save`). Checkpoint loading supports PyTorch 2.6+ (`weights_only=False` where full objects/scalers are loaded).
-- **GPU & CPU Acceleration (100% Paper Parity)**:
-  - **VAE & FM**: CUDA TF32, PyTorch `F.scaled_dot_product_attention`, GPU-resident mini-batching (with FP32 BCE/KL), `bfloat16` Flow Matching autocast, and precomputed frozen VAE `(mu, var)` latents.
-  - **Parallel Execution**: Concurrent dataset download/OT preparation (`--workers` / `--prep-workers`), multi-process GPU task scheduling with automatic serial OOM fallback (`--gpu-workers auto`), and parallel `scib` / WD+MMD evaluation (`--cpu-workers auto`, `--scib-workers`).
+- **Python**: 3.10+ (`sc-save` v0.2.0 CI targets Python 3.10–3.12; verified locally on Python 3.12).
+- **PyTorch**: Preserve Colab's preinstalled CUDA-enabled PyTorch (do not downgrade PyTorch when installing `sc-save`). Checkpoint loading supports PyTorch 2.6+ (`weights_only=False` fallback and automatic v1 `tokenzier`/`pos_embding` key remapping).
+- **GPU & CPU Acceleration (`v0.2.0` Architecture)**:
+  - **VAE & FM**: CUDA TF32, PyTorch `F.scaled_dot_product_attention`, adaptive GPU residency (`min(48 GB, 0.50 * free_vram)` across FP32/FP16/pinned-CPU tiers with FP32 BCE/KL), `bfloat16` Flow Matching autocast, precomputed frozen VAE `(mu, std)` posteriors, pure-PyTorch `CondOTPath` with fused `[2*B]` CFG sampling, and zero per-step GPU-to-CPU synchronization checks.
+  - **Batched Inference & Fast Evaluation**: Single-pass batched `SAVE.generate_like(...)` and `SAVE.transfer(..., input_cond="obs")`, `groupby`-indexed condition evaluation, shared-`cdist` Wasserstein/MMD metrics, and multi-process GPU/CPU parallelism (`--gpu-workers auto`, `--cpu-workers auto`, `--scib-workers`).
+  - **Condition Encoding**: `--cond-encoding legacy` (default for 100% ICLR 2026 parity) or `--cond-encoding offset` (reserves `0` exclusively for `<mask>` and eliminates cross-column ID collisions).
 - **`flash-attn`**: Not required (`is_flash_attn=False` in all released configurations).
+- **`flow-matching` / `torchdiffeq`**: Optional (`pip install "sc-save[solvers]"` for adaptive `dopri5`); core uses pure-PyTorch paths and fixed-step ODE/SDE solvers (`euler`, `midpoint`, `rk4`).
 
 ---
 
@@ -174,9 +176,13 @@ Launch [`notebooks/SAVE_ICLR2026_Reproduce_Colab.ipynb`](notebooks/SAVE_ICLR2026
 
 ### 6.1 Environment Setup
 
-From the repository root:
+Install `sc-save` from PyPI or from a repository clone:
 
 ```bash
+# From PyPI
+pip install "sc-save[all]"
+
+# Or from source
 git clone https://github.com/fdu-wangfeilab/sc-save.git
 cd sc-save
 
@@ -187,24 +193,25 @@ uv sync --extra all
 pip install -e ".[all]"
 ```
 
-Run offline unit tests to verify the installation:
+Run offline unit tests and CLI smoke check to verify the installation:
 
 ```bash
 pytest -v
+sc-save --version
 ```
 
-### 6.2 Unified Reproduction CLI (`examples/reproduce_iclr2026.py`)
+### 6.2 Unified Reproduction CLI (`sc-save reproduce` / `examples/reproduce_iclr2026.py`)
 
 Preview the execution plan and expected output file paths without downloading or training:
 
 ```bash
-python examples/reproduce_iclr2026.py --tasks all --data-root ./data --output-root ./outputs/iclr2026 --dry-run
+sc-save reproduce --tasks all --data-root ./data --output-root ./outputs/iclr2026 --dry-run
 ```
 
 Run **all 5 tables** end-to-end with full GPU & CPU parallelism (automatically downloads/prepares datasets concurrently, schedules parallel GPU subprocesses with automatic serial OOM fallback, evaluates metrics, and writes `<output-root>/results/iclr2026_summary.{json,md}` and per-task logs under `<output-root>/logs/`):
 
 ```bash
-python examples/reproduce_iclr2026.py \
+sc-save reproduce \
   --tasks all \
   --data-root ./data \
   --output-root ./outputs/iclr2026 \
@@ -215,29 +222,32 @@ python examples/reproduce_iclr2026.py \
   --prep-workers 4
 ```
 
+(`python examples/reproduce_iclr2026.py ...` supports all identical flags.)
+
 Or run individual tables selectively (using distinct `--results-dir` paths if you want per-table summary files):
 
 ```bash
 # Table 1: Single-Condition Generation (PBMC3K, Dentate gyrus, Tabula Muris)
-python examples/reproduce_iclr2026.py --tasks table1 --data-root ./data --output-root ./outputs/iclr2026 --results-dir ./outputs/iclr2026/results/table1 --gpu-workers auto --cpu-workers auto --device 0
+sc-save reproduce --tasks table1 --data-root ./data --output-root ./outputs/iclr2026 --results-dir ./outputs/iclr2026/results/table1 --gpu-workers auto --cpu-workers auto --device 0
 
 # Table 2: Dual-Condition Generation (Heart, PBMC, Lung Atlas)
-python examples/reproduce_iclr2026.py --tasks table2 --data-root ./data --output-root ./outputs/iclr2026 --results-dir ./outputs/iclr2026/results/table2 --gpu-workers auto --cpu-workers auto --device 0
+sc-save reproduce --tasks table2 --data-root ./data --output-root ./outputs/iclr2026 --results-dir ./outputs/iclr2026/results/table2 --gpu-workers auto --cpu-workers auto --device 0
 
 # Table 3: Multi-Condition Generation (Lung Cancer Seen & Unseen 13, 24)
-python examples/reproduce_iclr2026.py --tasks table3 --data-root ./data --output-root ./outputs/iclr2026 --results-dir ./outputs/iclr2026/results/table3 --cpu-workers auto --device 0
+sc-save reproduce --tasks table3 --data-root ./data --output-root ./outputs/iclr2026 --results-dir ./outputs/iclr2026/results/table3 --cpu-workers auto --device 0
 
 # Table 4: Batch Effect Correction (Lung Atlas, Heart, PBMC + scIB)
-python examples/reproduce_iclr2026.py --tasks table4 --data-root ./data --output-root ./outputs/iclr2026 --results-dir ./outputs/iclr2026/results/table4 --gpu-workers auto --cpu-workers auto --device 0
+sc-save reproduce --tasks table4 --data-root ./data --output-root ./outputs/iclr2026 --results-dir ./outputs/iclr2026/results/table4 --gpu-workers auto --cpu-workers auto --device 0
 
 # Table 5: Leave-One-Out Perturbation Prediction (PBMC-IFN, 7 cell types)
-python examples/reproduce_iclr2026.py --tasks table5 --data-root ./data --output-root ./outputs/iclr2026 --results-dir ./outputs/iclr2026/results/table5 --gpu-workers auto --device 0
+sc-save reproduce --tasks table5 --data-root ./data --output-root ./outputs/iclr2026 --results-dir ./outputs/iclr2026/results/table5 --gpu-workers auto --device 0
 ```
 
 Useful flags:
 - `--gpu-workers <auto|int>`: Parallel GPU child processes (`"auto"` runs 4–6 concurrent jobs on $\ge$75 GB VRAM G4/H100, 2 on $\ge$36 GB A100, or up to 7 LOO folds on single-dataset `table5`; defaults to `"1"` for serial compatibility).
 - `--cpu-workers <auto|int>`: Concurrent CPU workers for `scib` and WD/MMD distribution evaluation (`"auto"` -> `min(8, os.cpu_count() or 1)`).
 - `--prep-workers <int>`: Upfront dataset download & OT workers passed to `prepare_datasets` (default `4`).
+- `--cond-encoding <legacy|offset>`: Condition encoding mode (`"legacy"` default for paper parity; `"offset"` for collision-free condition IDs).
 - `--skip-prepare`: Assert that datasets under `--data-root/processed/` are already prepared.
 - `--datasets pbmc3k,heart`: Restrict execution to specific datasets.
 - `--subset-cells 512 --vae-epoch 1 --fm-epoch 1 --epoch 1`: Fast end-to-end smoke check.
@@ -245,7 +255,7 @@ Useful flags:
 
 ### 6.3 Standalone Task Entrypoints (Alternative)
 
-Each benchmark can also be invoked directly via its dedicated script:
+Each benchmark can also be invoked directly via `sc-save` subcommands or its dedicated script:
 
 ```bash
 # Conditional Generation (Tables 1-3) + Evaluation
@@ -283,11 +293,13 @@ python examples/perturbation_prediction/run_leave_one_out.py \
 
 ---
 
-## 7. Paper Target vs. Colab G4 Reproduction Results (`reproduce-iclr2026@307c925`)
+## 7. Paper Target vs. Verified v1 Colab G4 Baseline (`reproduce-iclr2026@307c925`)
 
-> **Verification Status**: **Completed** across all 5 tables (11 datasets) on Google Colab Pro+ (`reproduce-iclr2026@307c925`). Full raw JSON output is archived in [`results/iclr2026_colab_repro.json`](results/iclr2026_colab_repro.json).
+> **Verification Status**:
+> - **v1 Baseline (`0.1.0` / `reproduce-iclr2026@307c925`)**: **Completed** across all 5 tables (11 datasets) on Google Colab Pro+ G4; exact raw metrics and timings are preserved in [`results/iclr2026_colab_repro.json`](results/iclr2026_colab_repro.json).
+> - **v2 (`sc-save 0.2.0`) Colab GPU Benchmarks**: **Not yet executed** (`v0.2.0` unit, API, and numerical-parity tests pass locally on CPU; v2 ships `sc-save reproduce`, updated [`notebooks/SAVE_ICLR2026_Reproduce_Colab.ipynb`](notebooks/SAVE_ICLR2026_Reproduce_Colab.ipynb), and the Colab GPU validation driver `colab_validate_v2.py` ready to run Colab GPU validation and compare against the v1 baseline).
 
-### 7.1 Colab G4 Runtime Environment, Dataset Dimensions & Wall-Clock Timings
+### 7.1 Verified v1 Colab G4 Runtime Environment, Dataset Dimensions & Wall-Clock Timings
 
 - **Hardware & Software**: `NVIDIA RTX PRO 6000 Blackwell Server Edition` (**94.97 GB VRAM**; Colab Pro+ G4 selected while H100/A100 instances were busy), Python `3.13.16`, PyTorch `2.14.1+cu130`, CUDA `13.0`, `prep_workers=4`, `gpu_workers="auto"` (4 concurrent GPU worker processes), `cpu_workers="auto"` (8 CPU workers).
 - **Verified `manifest.json` Dataset Dimensions**:
@@ -318,7 +330,7 @@ python examples/perturbation_prediction/run_leave_one_out.py \
 
 ### Table 1: Single-Condition Generation (`cell_type`)
 
-| Dataset | Metric | scVI | scDiffusion | CFGen | SAVE (Paper) | SAVE (Colab G4) |
+| Dataset | Metric | scVI | scDiffusion | CFGen | SAVE (Paper) | SAVE (v1 Colab G4) |
 | :--- | :--- | :---: | :---: | :---: | :---: | :---: |
 | **PBMC3K** | WD ($\downarrow$) | 17.66 | 22.41 | 16.94 | 19.14 | **12.76** (`12.7560`) |
 | **PBMC3K** | MMD ($\downarrow$) | 0.94 | 1.27 | 0.85 | 1.80 | **0.48** (`0.4794`) |
@@ -330,7 +342,7 @@ python examples/perturbation_prediction/run_leave_one_out.py \
 <details>
 <summary>Appendix Table: Table 1 Gene-Level Expression Metrics (SAVE Paper vs. Colab G4)</summary>
 
-| Dataset | Paper MSE ($\downarrow$) | Paper PCC ($\uparrow$) | Paper $R^2$ ($\uparrow$) | Colab G4 MSE | Colab G4 PCC | Colab G4 $R^2$ |
+| Dataset | Paper MSE ($\downarrow$) | Paper PCC ($\uparrow$) | Paper $R^2$ ($\uparrow$) | v1 Colab G4 MSE | v1 Colab G4 PCC | v1 Colab G4 $R^2$ |
 | :--- | :---: | :---: | :---: | :---: | :---: | :---: |
 | **PBMC3K** | 0.08 ± 0.18 | 0.93 ± 0.12 | 0.84 ± 0.27 | `0.0406` | `0.9428` | `0.8919` |
 | **Dentate gyrus** | 0.00 ± 0.00 | 0.99 ± 0.01 | 0.97 ± 0.02 | `0.0048` | `0.9910` | `0.9736` |
@@ -342,7 +354,7 @@ python examples/perturbation_prediction/run_leave_one_out.py \
 
 ### Table 2: Dual-Condition Generation (`batch`, `cell_type`)
 
-| Dataset | Metric | scVI | CFGen | scDiffusion | SAVE (Paper) | SAVE (Colab G4) |
+| Dataset | Metric | scVI | CFGen | scDiffusion | SAVE (Paper) | SAVE (v1 Colab G4) |
 | :--- | :--- | :---: | :---: | :---: | :---: | :---: |
 | **Heart** | WD ($\downarrow$) | 19.18 | 12.57 | 20.82 | **8.30** | 8.83 (`8.8298`) |
 | **Heart** | MMD ($\downarrow$) | 1.19 | 0.66 | 0.94 | **0.63** | 0.64 (`0.6416`) |
@@ -354,7 +366,7 @@ python examples/perturbation_prediction/run_leave_one_out.py \
 <details>
 <summary>Appendix Table: Table 2 Gene-Level Expression Metrics (SAVE Paper vs. Colab G4)</summary>
 
-| Dataset | Paper MSE ($\downarrow$) | Paper PCC ($\uparrow$) | Paper $R^2$ ($\uparrow$) | Colab G4 MSE | Colab G4 PCC | Colab G4 $R^2$ |
+| Dataset | Paper MSE ($\downarrow$) | Paper PCC ($\uparrow$) | Paper $R^2$ ($\uparrow$) | v1 Colab G4 MSE | v1 Colab G4 PCC | v1 Colab G4 $R^2$ |
 | :--- | :---: | :---: | :---: | :---: | :---: | :---: |
 | **Heart** | 0.01 ± 0.02 | 0.88 ± 0.13 | 0.63 ± 0.26 | `0.0158` | `0.8710` | `0.5828` |
 | **PBMC** | 0.02 ± 0.02 | 0.98 ± 0.03 | 0.95 ± 0.07 | `0.0061` | `0.9857` | `0.9689` |
@@ -366,7 +378,7 @@ python examples/perturbation_prediction/run_leave_one_out.py \
 
 ### Table 3: Multi-Condition Generation on Lung Cancer (5 Covariates)
 
-| Split | Metric | CFGen | scDiffusion | SAVE (Paper) | SAVE (Colab G4) |
+| Split | Metric | CFGen | scDiffusion | SAVE (Paper) | SAVE (v1 Colab G4) |
 | :--- | :--- | :---: | :---: | :---: | :---: |
 | **Seen** (25 combos) | WD ($\downarrow$) | 16.94 ± 4.19 | 5.27 ± 2.14 | 3.10 ± 0.96 | **3.07** (`3.0661`) |
 | **Seen** (25 combos) | MMD ($\downarrow$) | 1.49 ± 1.80 | 1.06 ± 1.59 | **1.06** ± 1.48 | 1.08 (`1.0762`) |
@@ -378,7 +390,7 @@ python examples/perturbation_prediction/run_leave_one_out.py \
 <details>
 <summary>Appendix Tables: Table 3 Gene-Level & Held-Out Per-Condition Breakdown (SAVE Paper vs. Colab G4)</summary>
 
-| Subset | Paper MSE ($\downarrow$) | Paper PCC ($\uparrow$) | Paper $R^2$ ($\uparrow$) | Colab G4 MSE | Colab G4 PCC | Colab G4 $R^2$ |
+| Subset | Paper MSE ($\downarrow$) | Paper PCC ($\uparrow$) | Paper $R^2$ ($\uparrow$) | v1 Colab G4 MSE | v1 Colab G4 PCC | v1 Colab G4 $R^2$ |
 | :--- | :---: | :---: | :---: | :---: | :---: | :---: |
 | **Seen** | 0.01 ± 0.02 | 0.94 ± 0.07 | 0.88 ± 0.14 | `0.0117` | `0.9443` | `0.8812` |
 | **Unseen** | 0.04 ± 0.03 | 0.85 ± 0.08 | 0.70 ± 0.14 | `0.0441` | `0.8168` | `0.6467` |
@@ -394,7 +406,7 @@ Paper per-condition distribution metrics (`tab:multi_cond_performance`):
 
 ### Table 4: Batch Effect Correction (scIB Evaluation)
 
-| Dataset | Metric | Scanorama | Harmony | scVI | trVAE | SAVE (Paper) | SAVE (Colab G4) |
+| Dataset | Metric | Scanorama | Harmony | scVI | trVAE | SAVE (Paper) | SAVE (v1 Colab G4) |
 | :--- | :--- | :---: | :---: | :---: | :---: | :---: | :---: |
 | **Lung Atlas** | Bio ($\uparrow$) | 0.70 | 0.65 | 0.58 | 0.69 | **0.73** (`0.7340`) | **0.73** (`0.7342`) |
 | **Lung Atlas** | Batch ($\uparrow$) | 0.88 | **0.93** | 0.83 | 0.90 | **0.93** (`0.9309`) | 0.92 (`0.9231`) |
@@ -412,11 +424,11 @@ Paper per-condition distribution metrics (`tab:multi_cond_performance`):
 | Dataset | Source | NMI | ARI | ASW_label | ASW_batch | PCR_batch | graph_conn | avg_bio | avg_batch | scib_score |
 | :--- | :--- | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: |
 | **PBMC** | Paper | 0.8637 | 0.7952 | 0.5958 | 0.9128 | 0.4996 | 0.9868 | 0.7516 | 0.9498 | 0.8309 |
-| **PBMC** | Colab G4 | 0.8385 | 0.7476 | 0.6128 | 0.8789 | 0.5709 | 0.9845 | 0.7330 | 0.9317 | 0.8125 |
+| **PBMC** | v1 Colab G4 | 0.8385 | 0.7476 | 0.6128 | 0.8789 | 0.5709 | 0.9845 | 0.7330 | 0.9317 | 0.8125 |
 | **Lung Atlas** | Paper | 0.8285 | 0.7340 | 0.6395 | 0.8693 | 0.2134 | 0.9926 | 0.7340 | 0.9309 | 0.8128 |
-| **Lung Atlas** | Colab G4 | 0.8257 | 0.7186 | 0.6583 | 0.8542 | 0.1798 | 0.9919 | 0.7342 | 0.9231 | 0.8097 |
+| **Lung Atlas** | v1 Colab G4 | 0.8257 | 0.7186 | 0.6583 | 0.8542 | 0.1798 | 0.9919 | 0.7342 | 0.9231 | 0.8097 |
 | **Heart** | Paper | 0.7999 | 0.8146 | 0.6579 | 0.8576 | 0.2554 | 0.8615 | 0.7574 | 0.8596 | 0.7983 |
-| **Heart** | Colab G4 | 0.7986 | 0.8138 | 0.6492 | 0.8497 | 0.1640 | 0.8983 | 0.7539 | 0.8740 | 0.8019 |
+| **Heart** | v1 Colab G4 | 0.7986 | 0.8138 | 0.6492 | 0.8497 | 0.1640 | 0.8983 | 0.7539 | 0.8740 | 0.8019 |
 
 </details>
 
@@ -424,7 +436,7 @@ Paper per-condition distribution metrics (`tab:multi_cond_performance`):
 
 ### Table 5: Leave-One-Out Perturbation Prediction (`PBMC-IFN`)
 
-| Held-Out Cell Type | Paper PCC ($\uparrow$) | Colab G4 PCC | Paper $R^2$ ($\uparrow$) | Colab G4 $R^2$ | Paper WD / MMD ($\downarrow$) | Colab G4 WD / MMD | Paper MSE ($\downarrow$) | Colab G4 MSE |
+| Held-Out Cell Type | Paper PCC ($\uparrow$) | v1 Colab G4 PCC | Paper $R^2$ ($\uparrow$) | v1 Colab G4 $R^2$ | Paper WD / MMD ($\downarrow$) | v1 Colab G4 WD / MMD | Paper MSE ($\downarrow$) | v1 Colab G4 MSE |
 | :--- | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: |
 | **CD8T** | 0.98 | `0.9840` | 0.97 | `0.9642` | 4.01 / 0.11 | `4.06 / 0.03` | 0.00 | `0.0012` |
 | **CD14+Mono** | 0.97 | `0.9093` | 0.89 | `0.7098` | 5.03 / 0.09 | `7.68 / 0.28` | 0.00 | `0.0189` |

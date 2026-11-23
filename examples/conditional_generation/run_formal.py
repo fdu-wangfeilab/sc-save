@@ -4,8 +4,14 @@ from __future__ import annotations
 
 import argparse
 import json
+from pathlib import Path
+import sys
 
-from sc_save_public.conditional_generation import (
+SRC_DIR = Path(__file__).resolve().parents[2] / "src"
+if str(SRC_DIR) not in sys.path:
+    sys.path.insert(0, str(SRC_DIR))
+
+from sc_save.workflows.generation import (
     DEFAULT_COND_COLS,
     DEFAULT_FORMAL_OUTPUT_DIR,
     run_formal_conditional_generation,
@@ -66,6 +72,7 @@ def parse_args():
     parser.add_argument("--seed", type=int, default=1202)
     parser.add_argument("--subset-size", type=int, default=0)
     parser.add_argument("--overwrite-ckpt", action="store_true")
+    parser.add_argument("--cond-encoding", choices=["legacy", "offset"], default="legacy")
     return parser.parse_args()
 
 
@@ -101,8 +108,17 @@ def main():
         subset_size=args.subset_size,
         ckpt_dir=args.ckpt_dir,
         overwrite_ckpt=args.overwrite_ckpt,
+        cond_encoding=args.cond_encoding,
     )
-    print(json.dumps({"generation_path": report["generation_path"], "target_path": report["target_path"]}, indent=2))
+    print(
+        json.dumps(
+            {
+                "generation_path": report["generation_path"],
+                "target_path": report["target_path"],
+            },
+            indent=2,
+        )
+    )
 
 
 if __name__ == "__main__":
