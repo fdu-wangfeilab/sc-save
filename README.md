@@ -41,7 +41,7 @@
 
 - **LLM Biological Knowledge (Semantic Gene Embeddings → OT Gene Blocks):** Unlike vision pixels on a regular 2D grid, genes form an unordered, sparse set. SAVE encodes curated **NCBI Gene** functional summaries using a pre-trained LLM (GenePT, 1,536-dimensional semantic embeddings) and solves iterative **Optimal Transport** clustering to partition ~20,000 genes into $L$ balanced, pathway-coherent **Gene Blocks** ($K = 3200$).
 - **Latent Flow Matching Tech Stack (Gene-Block VAE + DiT OT-FM):** Compresses structured gene blocks ($X \in \mathbb{R}^{N \times L \times K}$) into a compact biological latent space ($z \in \mathbb{R}^{N \times L \times d}$) via a Gene-Block Attention VAE, then trains a **DiT-based Conditional Optimal-Transport Flow Matching** model (`AdaLN`, independent condition masking $p = 0.6$, multi-condition Classifier-Free Guidance) in latent space—unifying 1–5 condition generation (including unseen combinations), zero-shot batch correction, and out-of-sample perturbation prediction across **8 benchmarks** with one fixed configuration.
-- **Ultra-High Efficiency (191× Speedup & 20-Step ODE Sampling):** Grouping $G \approx 19{,}112$ flat genes into $L = 6$ semantic blocks collapses self-attention complexity from $\mathcal{O}(G^2)$ to $\mathcal{O}(L^2)$, cutting single-RTX-3090 (24 GB) training time from **2,391.2 min (~40 h)** down to **12.5 min (191× speedup; 266× / 9.0 min at $K=5600$)**—and **~7 min** for single-run Heart in the verified v1 Colab G4 baseline (`sc-save v0.2.0` Colab GPU timings are pending validation)—while learning biologically interpretable pathway attention.
+- **Ultra-High Efficiency (191× Speedup & 20-Step ODE Sampling):** Grouping $G \approx 19{,}112$ flat genes into $L = 6$ semantic blocks collapses self-attention complexity from $\mathcal{O}(G^2)$ to $\mathcal{O}(L^2)$, cutting single-RTX-3090 (24 GB) training time from **2,391.2 min (~40 h)** down to **12.5 min (191× speedup; 266× / 9.0 min at $K=5600$)**—and in `sc-save v0.2.0` Colab GPU validation, accelerating standalone single-GPU training + generation on `lung_cancer` by **2.27×** (**8.43×** faster generation) even on an A100 vs. the v1 Blackwell G4 baseline—while learning biologically interpretable pathway attention.
 
 ### LLM Semantic Gene Blocks vs. ViT Patchify
 
@@ -203,10 +203,10 @@ src/sc_save/          Primary sc-save v0.2.0 package (config, data, nn, training
 src/sc_save_public/   Backward-compatible v1 shims re-exporting sc_save modules
 examples/             Runnable CLI entrypoints & unified ICLR 2026 orchestrator
 notebooks/            Quickstart tutorial & Google Colab G4/H100/A100 ICLR 2026 reproduction notebook
-results/              Verified ICLR 2026 v1 Colab G4 reproduction JSON (iclr2026_colab_repro.json)
+results/              Verified ICLR 2026 baselines (iclr2026_colab_repro.json v1 G4 & iclr2026_v2_colab_validation.json v0.2.0 A100/L4)
 tests/                Offline unit, parity & API test coverage
 docs/assets/          Paper figures and visual assets
-REPRODUCIBILITY.md    Detailed ICLR 2026 paper reproduction guide & verified v1 Colab G4 baseline tables
+REPRODUCIBILITY.md    Detailed ICLR 2026 paper reproduction guide & verified v1 / v0.2.0 Colab comparison tables
 CHANGELOG.md          Release history
 ```
 
@@ -280,21 +280,24 @@ sc-save reproduce \
 python examples/reproduce_iclr2026.py --tasks table2 --data-root ./data --output-root ./outputs/iclr2026 --gpu-workers auto --device 0
 ```
 
-### Verified ICLR 2026 v1 Colab G4 Baseline (`reproduce-iclr2026@307c925`)
+### Verified ICLR 2026 Colab Baselines (`v1` G4 vs. `sc-save v0.2.0` A100/L4)
 
-> **Validation Status**: The table below and [`results/iclr2026_colab_repro.json`](results/iclr2026_colab_repro.json) preserve the **verified ICLR 2026 v1 (`0.1.0` / `reproduce-iclr2026@307c925`) Colab G4 baseline**. **`sc-save v0.2.0` Colab GPU benchmarks have not yet been executed**—v2 provides `sc-save reproduce`, updated [`notebooks/SAVE_ICLR2026_Reproduce_Colab.ipynb`](notebooks/SAVE_ICLR2026_Reproduce_Colab.ipynb), and the Phase 2 Colab GPU validation driver (`colab_validate_v2.py`) ready to run full GPU validation and benchmark comparisons against this v1 baseline.
+> **Validation Status**: **`sc-save v0.2.0`** passed all **10/10** primary ICLR 2026 benchmarks across Tables 1–5 with **zero regression gate failures** (`all_regression_gates_passed: true`) in [`results/iclr2026_v2_colab_validation.json`](results/iclr2026_v2_colab_validation.json), alongside the preserved v1 (`0.1.0` / `reproduce-iclr2026@307c925`) Blackwell G4 baseline in [`results/iclr2026_colab_repro.json`](results/iclr2026_colab_repro.json).
 
-In that verified v1 Colab G4 run, all 5 tables (11 datasets) completed on Colab Pro+ (`NVIDIA RTX PRO 6000 Blackwell Server Edition`, `94.97 GB` VRAM, PyTorch `2.14.1+cu130`, CUDA `13.0`, `gpu_workers="auto"` / 4 GPU workers, `cpu_workers="auto"` / 8 CPU workers; `5,295s` / `88m 15s` wall-clock for parallel Tables 1–4, `~7m` for single-run `heart`). Full per-metric tables, dataset dimensions, and variance notes are in [`REPRODUCIBILITY.md`](REPRODUCIBILITY.md) and [`results/iclr2026_colab_repro.json`](results/iclr2026_colab_repro.json):
+- **v1 Baseline Hardware**: `NVIDIA RTX PRO 6000 Blackwell Server Edition` (`94.97 GB` VRAM, PyTorch `2.14.1+cu130`, CUDA `13.0`; `5,295s` / `88m 15s` wall-clock for parallel Tables 1–4, `~7m` for single-run `heart`).
+- **v0.2.0 Validation Hardware**:
+  - `NVIDIA A100-SXM4-80GB` (`79.25 GB` VRAM, PyTorch `2.14.1+cu130`, CUDA `13.0`) for `test` (`pytest` + GPU API smoke with `0.0` reload diff), `prepare`, all of Tier 1 (`pbmc3k`, `dentategyrus`, `heart`, `pbmc`, `lung_atlas`, `heart_bec`, `pbmc_bec`, `lung_atlas_bec`, `pbmc_ifn`), and Tier 2 `lung_cancer` (**2.27×** total / **8.43×** generation speedup vs. v1 Blackwell).
+  - `NVIDIA L4` High-RAM (`22.03 GB` VRAM, `52 GB` host RAM) for Tier 2 `tabula_muris` (`196,311 × 22,400`, using streaming randomized PCA + tiled RBF-MMD) and Tier 3 `heart` `cond_encoding="offset"` A/B (`WD 8.53 / MMD 0.62 / PCC 0.8730`). Optional Tier 3 `offset` reruns on `pbmc_ifn` (upstream Dropbox link temporarily disabled) and `lung_cancer` (52 GB L4 host-RAM ceiling during raw HVG prep) were skipped after their main Table 3 & 5 `legacy` benchmarks had already passed on A100.
 
-| Benchmark | Key Metric(s) | Paper Target | v1 Colab G4 Baseline |
-| :--- | :--- | :---: | :---: |
-| **Table 1** (`pbmc3k` / `dentategyrus` / `tabula_muris`) | WD ($\downarrow$) / MMD ($\downarrow$) | `19.14/1.80` · `9.16/0.17` · `10.86/0.04` | `12.76/0.48` · `8.08/0.11` · `10.65/0.04` |
-| **Table 2** (`heart` / `pbmc` / `lung_atlas`) | WD ($\downarrow$) / MMD ($\downarrow$) | `8.30/0.63` · `5.37/0.29` · `4.37/1.14` | `8.83/0.64` · `5.39/0.30` · `4.42/1.16` |
-| **Table 3** (`lung_cancer` Seen / Unseen) | WD ($\downarrow$) / MMD ($\downarrow$) | `3.10/1.06` · `4.63/2.11` | `3.07/1.08` · `5.39/2.16` |
-| **Table 4** (`lung_atlas` / `heart` / `pbmc` BEC) | scIB ($\uparrow$) | `0.8128` · `0.7983` · `0.8309` | `0.8097` · `0.8019` · `0.8125` |
-| **Table 5** (`pbmc_ifn` 7-fold LOO Average) | PCC ($\uparrow$) / $R^2$ ($\uparrow$) / WD ($\downarrow$) | `0.96` / `0.86` / `5.15` | `0.943` / `0.807` / `5.77` |
+| Benchmark | Key Metric(s) | Paper Target | v1 Colab (Blackwell G4) | **v0.2.0 Colab (A100 / L4)** |
+| :--- | :--- | :---: | :---: | :---: |
+| **Table 1** (`pbmc3k` / `dentategyrus` / `tabula_muris`) | WD ($\downarrow$) / MMD ($\downarrow$) | `19.14/1.80` · `9.16/0.17` · `10.86/0.04` | `12.76/0.48` · `8.08/0.11` · `10.65/0.04` | **`12.74/0.49` · `8.11/0.11` · `10.21/0.03`** |
+| **Table 2** (`heart` / `pbmc` / `lung_atlas`) | WD ($\downarrow$) / MMD ($\downarrow$) | `8.30/0.63` · `5.37/0.29` · `4.37/1.14` | `8.83/0.64` · `5.39/0.30` · `4.42/1.16` | **`8.20/0.61` · `5.30/0.29` · `4.41/1.15`** |
+| **Table 3** (`lung_cancer` Seen / Unseen) | WD ($\downarrow$) / MMD ($\downarrow$) | `3.10/1.06` · `4.63/2.11` | `3.07/1.08` · `5.39/2.16` | **`3.05/1.07` · `4.42/2.07`** |
+| **Table 4** (`lung_atlas` / `heart` / `pbmc` BEC) | scIB ($\uparrow$) | `0.8128` · `0.7983` · `0.8309` | `0.8097` · `0.8019` · `0.8125` | **`0.8080` · `0.7985` · `0.8238`** |
+| **Table 5** (`pbmc_ifn` 7-fold LOO Average) | PCC ($\uparrow$) / $R^2$ ($\uparrow$) / WD ($\downarrow$) | `0.96` / `0.86` / `5.15` | `0.943` / `0.807` / `5.77` | **`0.940` / `0.792` / `5.86`** |
 
-See [`REPRODUCIBILITY.md`](REPRODUCIBILITY.md) for dataset URLs, model hyperparameters, hardware timings, Step A vs. parallel rerun notes, and complete Paper vs. Colab G4 comparison tables.
+See [`REPRODUCIBILITY.md`](REPRODUCIBILITY.md) for dataset URLs, model hyperparameters, per-dataset speedups (`v1` vs. `v0.2.0`), condition-encoding A/B comparison, and complete Tables 1–5 breakdowns.
 
 ---
 
