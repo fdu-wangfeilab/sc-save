@@ -1,6 +1,12 @@
 import argparse
+from pathlib import Path
+import sys
 
-from sc_save_public.conditional_distribution_evaluation import (
+SRC_DIR = Path(__file__).resolve().parents[2] / "src"
+if str(SRC_DIR) not in sys.path:
+    sys.path.insert(0, str(SRC_DIR))
+
+from sc_save.eval.generation import (
     DEFAULT_COND_COLS,
     DEFAULT_OUTPUT_DIR,
     run_conditional_distribution_evaluation,
@@ -37,6 +43,7 @@ def parse_args():
         action="store_true",
         help="Skip PCC/MSE/R2/top-gene-overlap summary metrics.",
     )
+    parser.add_argument("--eval-workers", type=int, default=0)
     return parser.parse_args()
 
 
@@ -55,6 +62,7 @@ def main():
         top_gene_count=args.top_gene_count,
         model_name=args.model_name,
         include_expression_metrics=not args.skip_expression_metrics,
+        eval_workers=args.eval_workers,
     )
 
 

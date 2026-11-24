@@ -3,8 +3,14 @@
 from __future__ import annotations
 
 import argparse
+from pathlib import Path
+import sys
 
-from sc_save_public.bec_integration import (
+SRC_DIR = Path(__file__).resolve().parents[2] / "src"
+if str(SRC_DIR) not in sys.path:
+    sys.path.insert(0, str(SRC_DIR))
+
+from sc_save.workflows.bec import (
     DEFAULT_BEC_OUTPUT_DIR,
     SAVE_B_PERTURB_MODEL_CONFIG,
     SAVE_B_PERTURB_TRAIN_CONFIG,
@@ -38,6 +44,7 @@ def parse_args():
     parser.add_argument("--seed", type=int, default=1202)
     parser.add_argument("--overwrite-ckpt", action="store_true")
     parser.add_argument("--skip-scib", action="store_true")
+    parser.add_argument("--cond-encoding", choices=["legacy", "offset"], default="legacy")
     return parser.parse_args()
 
 
@@ -66,6 +73,7 @@ def main():
         seed=args.seed,
         overwrite_ckpt=args.overwrite_ckpt,
         run_scib=not args.skip_scib,
+        cond_encoding=args.cond_encoding,
     )
     print(f"Done. Report written to {result['report_path']}")
     summary = result["report"].get("summary", {})

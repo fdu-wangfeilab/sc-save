@@ -1,6 +1,12 @@
 import argparse
+from pathlib import Path
+import sys
 
-from sc_save_public.conditional_generation import (
+SRC_DIR = Path(__file__).resolve().parents[2] / "src"
+if str(SRC_DIR) not in sys.path:
+    sys.path.insert(0, str(SRC_DIR))
+
+from sc_save.workflows.generation import (
     DEFAULT_OUTPUT_DIR,
     run_hca_smoke,
 )

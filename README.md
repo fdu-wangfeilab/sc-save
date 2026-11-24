@@ -10,6 +10,7 @@
 
 <p>
   <a href="https://save.argonx.dev"><img src="https://img.shields.io/badge/Project_Page-save.argonx.dev-245D50?style=flat-square&labelColor=0D1117" alt="Project Page" /></a>
+  <a href="https://pypi.org/project/sc-save/"><img src="https://img.shields.io/badge/PyPI-sc--save_0.2.0-0D9488?style=flat-square&labelColor=0D1117&logo=pypi&logoColor=white" alt="PyPI sc-save" /></a>
   <a href="https://colab.research.google.com/github/fdu-wangfeilab/sc-save/blob/main/notebooks/SAVE_ICLR2026_Reproduce_Colab.ipynb"><img src="https://colab.research.google.com/assets/colab-badge.svg" alt="Open In Colab" /></a>
   <a href="https://openreview.net/forum?id=l7QEoK4uDP"><img src="https://img.shields.io/badge/ICLR_2026-OpenReview-0F766E?style=flat-square&labelColor=0D1117" alt="ICLR 2026 OpenReview" /></a>
   <a href="https://arxiv.org/abs/2604.16776"><img src="https://img.shields.io/badge/arXiv-2604.16776-10B981?style=flat-square&labelColor=0D1117&logo=arxiv&logoColor=white" alt="arXiv 2604.16776" /></a>
@@ -20,6 +21,7 @@
 
 <p>
   <a href="#overview">Overview</a> &middot;
+  <a href="#python-api--unified-cli-quickstart">Python API &amp; CLI</a> &middot;
   <a href="#llm-semantic-gene-blocks-vs-vit-patchify">LLM Blocks vs. ViT</a> &middot;
   <a href="#key-results">Key Results</a> &middot;
   <a href="#iclr-2026-reproduction-quickstart">Reproduce ICLR 2026</a> &middot;
@@ -39,7 +41,7 @@
 
 - **LLM Biological Knowledge (Semantic Gene Embeddings → OT Gene Blocks):** Unlike vision pixels on a regular 2D grid, genes form an unordered, sparse set. SAVE encodes curated **NCBI Gene** functional summaries using a pre-trained LLM (GenePT, 1,536-dimensional semantic embeddings) and solves iterative **Optimal Transport** clustering to partition ~20,000 genes into $L$ balanced, pathway-coherent **Gene Blocks** ($K = 3200$).
 - **Latent Flow Matching Tech Stack (Gene-Block VAE + DiT OT-FM):** Compresses structured gene blocks ($X \in \mathbb{R}^{N \times L \times K}$) into a compact biological latent space ($z \in \mathbb{R}^{N \times L \times d}$) via a Gene-Block Attention VAE, then trains a **DiT-based Conditional Optimal-Transport Flow Matching** model (`AdaLN`, independent condition masking $p = 0.6$, multi-condition Classifier-Free Guidance) in latent space—unifying 1–5 condition generation (including unseen combinations), zero-shot batch correction, and out-of-sample perturbation prediction across **8 benchmarks** with one fixed configuration.
-- **Ultra-High Efficiency (191× Speedup & 20-Step ODE Sampling):** Grouping $G \approx 19{,}112$ flat genes into $L = 6$ semantic blocks collapses self-attention complexity from $\mathcal{O}(G^2)$ to $\mathcal{O}(L^2)$, cutting single-RTX-3090 (24 GB) training time from **2,391.2 min (~40 h)** down to **12.5 min (191× speedup; 266× / 9.0 min at $K=5600$)**—and **~7 min** per run on Colab G4 with SDPA/TF32/`bfloat16` FM and 20-step sampling—while learning biologically interpretable pathway attention.
+- **Ultra-High Efficiency (191× Speedup & 20-Step ODE Sampling):** Grouping $G \approx 19{,}112$ flat genes into $L = 6$ semantic blocks collapses self-attention complexity from $\mathcal{O}(G^2)$ to $\mathcal{O}(L^2)$, cutting single-RTX-3090 (24 GB) training time from **2,391.2 min (~40 h)** down to **12.5 min (191× speedup; 266× / 9.0 min at $K=5600$)**—and in `sc-save v0.2.0` Colab GPU validation, accelerating standalone single-GPU training + generation on `lung_cancer` by **2.27×** (**8.43×** faster generation) even on an A100 vs. the v1 Blackwell G4 baseline—while learning biologically interpretable pathway attention.
 
 ### LLM Semantic Gene Blocks vs. ViT Patchify
 
@@ -185,24 +187,71 @@ Extracting condition-modulated attention weights from the Flow Matching Transfor
 
 ## Released Modules & Repository Layout
 
-| Module | Status | Entrypoint |
-| :--- | :---: | :--- |
-| Dataset Preparation (Tables 1–5 & GenePT) | Released | [`examples/prepare_datasets.py`](examples/prepare_datasets.py) |
-| Gene Block Construction | Released | [`examples/gene_block_construction/run_pipeline.py`](examples/gene_block_construction/run_pipeline.py) |
-| Conditional Generation (VAE + OT FM) | Released | [`examples/conditional_generation/run_formal.py`](examples/conditional_generation/run_formal.py) / [`run_hca_formal.py`](examples/conditional_generation/run_hca_formal.py) / [`run_hca_smoke.py`](examples/conditional_generation/run_hca_smoke.py) |
-| Conditional Distribution Evaluation | Released | [`examples/conditional_distribution_evaluation/run_example.py`](examples/conditional_distribution_evaluation/run_example.py) |
-| Batch Effect Correction (scIB Benchmark) | Released | [`examples/bec_integration/run_bec.py`](examples/bec_integration/run_bec.py) |
-| Perturbation Prediction (Single & LOO) | Released | [`examples/perturbation_prediction/run_single.py`](examples/perturbation_prediction/run_single.py) / [`run_leave_one_out.py`](examples/perturbation_prediction/run_leave_one_out.py) |
-| Unified ICLR 2026 Reproduction | Released | [`examples/reproduce_iclr2026.py`](examples/reproduce_iclr2026.py) · [`notebooks/SAVE_ICLR2026_Reproduce_Colab.ipynb`](notebooks/SAVE_ICLR2026_Reproduce_Colab.ipynb) |
+| Module | Package / CLI | Script Entrypoint |
+| :--- | :--- | :--- |
+| Core Python API (`SAVE`, `SAVEConfig`, `build_gene_blocks`) | `sc_save` | [`notebooks/SAVE_Quickstart_Tutorial.ipynb`](notebooks/SAVE_Quickstart_Tutorial.ipynb) |
+| Dataset Preparation (Tables 1–5 & GenePT) | `sc-save prepare-datasets` | [`examples/prepare_datasets.py`](examples/prepare_datasets.py) |
+| Gene Block Construction | `sc-save build-blocks` | [`examples/gene_block_construction/run_pipeline.py`](examples/gene_block_construction/run_pipeline.py) |
+| Conditional Generation (VAE + OT FM) | `sc-save train` / `sc-save generate` | [`examples/conditional_generation/run_formal.py`](examples/conditional_generation/run_formal.py) / [`run_hca_formal.py`](examples/conditional_generation/run_hca_formal.py) / [`run_hca_smoke.py`](examples/conditional_generation/run_hca_smoke.py) |
+| Conditional Distribution Evaluation | `sc-save evaluate` | [`examples/conditional_distribution_evaluation/run_example.py`](examples/conditional_distribution_evaluation/run_example.py) |
+| Batch Effect Correction (scIB Benchmark) | `sc-save bec` | [`examples/bec_integration/run_bec.py`](examples/bec_integration/run_bec.py) |
+| Perturbation Prediction (Single & LOO) | `sc-save perturb` | [`examples/perturbation_prediction/run_single.py`](examples/perturbation_prediction/run_single.py) / [`run_leave_one_out.py`](examples/perturbation_prediction/run_leave_one_out.py) |
+| Unified ICLR 2026 Reproduction | `sc-save reproduce` | [`examples/reproduce_iclr2026.py`](examples/reproduce_iclr2026.py) · [`notebooks/SAVE_ICLR2026_Reproduce_Colab.ipynb`](notebooks/SAVE_ICLR2026_Reproduce_Colab.ipynb) |
 
 ```text
-src/sc_save_public/   Reusable package code (datasets, models, generation, BEC, perturbation, eval)
+src/sc_save/          Primary sc-save v0.2.0 package (config, data, nn, training, model, eval, workflows, cli)
+src/sc_save_public/   Backward-compatible v1 shims re-exporting sc_save modules
 examples/             Runnable CLI entrypoints & unified ICLR 2026 orchestrator
-notebooks/            Google Colab G4/H100/A100 ICLR 2026 reproduction notebook
-results/              Verified Colab G4 reproduction JSON (iclr2026_colab_repro.json)
-tests/                Offline unit & smoke test coverage
+notebooks/            Quickstart tutorial & Google Colab G4/H100/A100 ICLR 2026 reproduction notebook
+results/              Verified ICLR 2026 baselines (iclr2026_colab_repro.json v1 G4 & iclr2026_v2_colab_validation.json v0.2.0 A100/L4)
+tests/                Offline unit, parity & API test coverage
 docs/assets/          Paper figures and visual assets
-REPRODUCIBILITY.md    Detailed ICLR 2026 paper reproduction guide & verified Colab comparison tables
+REPRODUCIBILITY.md    Detailed ICLR 2026 paper reproduction guide & verified v1 / v0.2.0 Colab comparison tables
+CHANGELOG.md          Release history
+```
+
+---
+
+## Python API & Unified CLI Quickstart
+
+Install `sc-save` from PyPI (or from source as shown under [Installation](#environment-installation)) and train, generate, transfer, save, and reload models in just a few lines—also see [`notebooks/SAVE_Quickstart_Tutorial.ipynb`](notebooks/SAVE_Quickstart_Tutorial.ipynb):
+
+```python
+import scanpy as sc
+from sc_save import SAVE, SAVEConfig, build_gene_blocks, load_gene_embeddings
+
+# 1. Load scRNA-seq AnnData & precomputed GenePT embeddings, then construct OT gene blocks
+adata = sc.read_h5ad("heart_raw.h5ad")
+gene_embs = load_gene_embeddings("GenePT_gene_protein_embedding_model_3_text.pickle")
+blocks = build_gene_blocks(adata, gene_embs, block_size=3200)
+
+# 2. Configure and train Stage-1 Attention VAE + Stage-2 Latent Flow Matching
+cfg = SAVEConfig.save_b(gene_block_size=3200, cond_encoding="offset")
+model = SAVE(blocks.adata, condition_cols=("batch", "cell_type"), config=cfg, device="auto")
+model.fit()
+
+# 3. Encode, generate, and perform zero-shot batch/condition transfer
+z = model.encode(with_cond=False, latent_pos=1)
+gen = model.generate({"batch": "donor_1", "cell_type": "Cardiomyocyte"}, n_cells=500, steps=20)
+gen_matched = model.generate_like(blocks.adata, steps=20)  # single batched pass matching target obs
+transferred = model.transfer(blocks.adata, target_cond={"batch": "donor_1"}, input_cond="obs")
+
+# 4. Save and reload complete bundle (config, vocab, scaler, VAE & FM weights)
+model.save("./outputs/save_heart_bundle")
+reloaded = SAVE.load("./outputs/save_heart_bundle", device="auto")
+```
+
+Or drive every stage directly from the unified `sc-save` CLI:
+
+```bash
+sc-save --version
+sc-save build-blocks --data-path input.h5ad --gene-embedding-path genept.pickle --gene-block-size 3200
+sc-save train --data-path processed.h5ad --cond-cols batch cell_type --preset save_b --output-dir ./outputs/model
+sc-save generate --model-dir ./outputs/model --cond batch=b1 cell_type=T --n-cells 200 --output-dir ./outputs/gen
+sc-save evaluate --gt-path target.h5ad --gen-path ./outputs/gen/generation.h5ad --cond-cols batch cell_type
+sc-save bec --data-path bec_gbs400.h5ad --task-name lung_atlas_bec --scib-workers 8
+sc-save perturb --data-path pbmc_ifn_gbs400.h5ad --workers auto
+sc-save reproduce --tasks all --data-root ./data --gpu-workers auto --cpu-workers auto
 ```
 
 ---
@@ -211,14 +260,14 @@ REPRODUCIBILITY.md    Detailed ICLR 2026 paper reproduction guide & verified Col
 
 [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/fdu-wangfeilab/sc-save/blob/main/notebooks/SAVE_ICLR2026_Reproduce_Colab.ipynb)
 
-All five quantitative benchmarks (**Tables 1–5**) can be reproduced either in **Google Colab Pro+ (G4 96 GB / H100 / A100)** or locally via [`examples/reproduce_iclr2026.py`](examples/reproduce_iclr2026.py):
+All five quantitative benchmarks (**Tables 1–5**) can be reproduced either in **Google Colab Pro+ (G4 96 GB / H100 / A100)** or locally via `sc-save reproduce` or [`examples/reproduce_iclr2026.py`](examples/reproduce_iclr2026.py):
 
 ```bash
 # Preview execution plan and expected output paths
-python examples/reproduce_iclr2026.py --tasks all --data-root ./data --dry-run
+sc-save reproduce --tasks all --data-root ./data --dry-run
 
 # Run all 5 paper tables end-to-end with GPU & CPU parallelism (auto-saturates >=40/75 GB GPUs)
-python examples/reproduce_iclr2026.py \
+sc-save reproduce \
   --tasks all \
   --data-root ./data \
   --output-root ./outputs/iclr2026 \
@@ -227,38 +276,52 @@ python examples/reproduce_iclr2026.py \
   --prep-workers 4 \
   --device 0
 
-# Or run a specific table (table1 | table2 | table3 | table4 | table5)
+# Or via the standalone script (supports all identical flags)
 python examples/reproduce_iclr2026.py --tasks table2 --data-root ./data --output-root ./outputs/iclr2026 --gpu-workers auto --device 0
 ```
 
-### Verified Colab G4 Reproduction (`reproduce-iclr2026@307c925`)
+### Verified ICLR 2026 Colab Baselines (`v1` G4 vs. `sc-save v0.2.0` A100/L4)
 
-All 5 tables (11 datasets) completed on Colab Pro+ (`NVIDIA RTX PRO 6000 Blackwell Server Edition`, `94.97 GB` VRAM, PyTorch `2.14.1+cu130`, CUDA `13.0`, `gpu_workers="auto"` / 4 GPU workers, `cpu_workers="auto"` / 8 CPU workers; `5,295s` / `88m 15s` wall-clock for parallel Tables 1–4, `~7m` for single-run `heart`). Full per-metric tables, dataset dimensions, and variance notes are in [`REPRODUCIBILITY.md`](REPRODUCIBILITY.md) and [`results/iclr2026_colab_repro.json`](results/iclr2026_colab_repro.json):
+> **Validation Status**: **`sc-save v0.2.0`** passed all **10/10** primary ICLR 2026 benchmarks across Tables 1–5 with **zero regression gate failures** (`all_regression_gates_passed: true`) in [`results/iclr2026_v2_colab_validation.json`](results/iclr2026_v2_colab_validation.json), alongside the preserved v1 (`0.1.0` / `reproduce-iclr2026@307c925`) Blackwell G4 baseline in [`results/iclr2026_colab_repro.json`](results/iclr2026_colab_repro.json).
 
-| Benchmark | Key Metric(s) | Paper Target | Colab G4 Reproduced |
-| :--- | :--- | :---: | :---: |
-| **Table 1** (`pbmc3k` / `dentategyrus` / `tabula_muris`) | WD ($\downarrow$) / MMD ($\downarrow$) | `19.14/1.80` · `9.16/0.17` · `10.86/0.04` | `12.76/0.48` · `8.08/0.11` · `10.65/0.04` |
-| **Table 2** (`heart` / `pbmc` / `lung_atlas`) | WD ($\downarrow$) / MMD ($\downarrow$) | `8.30/0.63` · `5.37/0.29` · `4.37/1.14` | `8.83/0.64` · `5.39/0.30` · `4.42/1.16` |
-| **Table 3** (`lung_cancer` Seen / Unseen) | WD ($\downarrow$) / MMD ($\downarrow$) | `3.10/1.06` · `4.63/2.11` | `3.07/1.08` · `5.39/2.16` |
-| **Table 4** (`lung_atlas` / `heart` / `pbmc` BEC) | scIB ($\uparrow$) | `0.8128` · `0.7983` · `0.8309` | `0.8097` · `0.8019` · `0.8125` |
-| **Table 5** (`pbmc_ifn` 7-fold LOO Average) | PCC ($\uparrow$) / $R^2$ ($\uparrow$) / WD ($\downarrow$) | `0.96` / `0.86` / `5.15` | `0.943` / `0.807` / `5.77` |
+- **v1 Baseline Hardware**: `NVIDIA RTX PRO 6000 Blackwell Server Edition` (`94.97 GB` VRAM, PyTorch `2.14.1+cu130`, CUDA `13.0`; `5,295s` / `88m 15s` wall-clock for parallel Tables 1–4, `~7m` for single-run `heart`).
+- **v0.2.0 Validation Hardware**:
+  - `NVIDIA A100-SXM4-80GB` (`79.25 GB` VRAM, PyTorch `2.14.1+cu130`, CUDA `13.0`) for `test` (`pytest` + GPU API smoke with `0.0` reload diff), `prepare`, all of Tier 1 (`pbmc3k`, `dentategyrus`, `heart`, `pbmc`, `lung_atlas`, `heart_bec`, `pbmc_bec`, `lung_atlas_bec`, `pbmc_ifn`), and Tier 2 `lung_cancer` (**2.27×** total / **8.43×** generation speedup vs. v1 Blackwell).
+  - `NVIDIA L4` High-RAM (`22.03 GB` VRAM, `52 GB` host RAM) for Tier 2 `tabula_muris` (`196,311 × 22,400`, using streaming randomized PCA + tiled RBF-MMD) and Tier 3 `heart` `cond_encoding="offset"` A/B (`WD 8.53 / MMD 0.62 / PCC 0.8730`). Optional Tier 3 `offset` reruns on `pbmc_ifn` (upstream Dropbox link temporarily disabled) and `lung_cancer` (52 GB L4 host-RAM ceiling during raw HVG prep) were skipped after their main Table 3 & 5 `legacy` benchmarks had already passed on A100.
 
-See [`REPRODUCIBILITY.md`](REPRODUCIBILITY.md) for dataset URLs, model hyperparameters, hardware timings, Step A vs. parallel rerun notes, and complete Paper vs. Colab G4 comparison tables.
+| Benchmark | Key Metric(s) | Paper Target | v1 Colab (Blackwell G4) | **v0.2.0 Colab (A100 / L4)** |
+| :--- | :--- | :---: | :---: | :---: |
+| **Table 1** (`pbmc3k` / `dentategyrus` / `tabula_muris`) | WD ($\downarrow$) / MMD ($\downarrow$) | `19.14/1.80` · `9.16/0.17` · `10.86/0.04` | `12.76/0.48` · `8.08/0.11` · `10.65/0.04` | **`12.74/0.49` · `8.11/0.11` · `10.21/0.03`** |
+| **Table 2** (`heart` / `pbmc` / `lung_atlas`) | WD ($\downarrow$) / MMD ($\downarrow$) | `8.30/0.63` · `5.37/0.29` · `4.37/1.14` | `8.83/0.64` · `5.39/0.30` · `4.42/1.16` | **`8.20/0.61` · `5.30/0.29` · `4.41/1.15`** |
+| **Table 3** (`lung_cancer` Seen / Unseen) | WD ($\downarrow$) / MMD ($\downarrow$) | `3.10/1.06` · `4.63/2.11` | `3.07/1.08` · `5.39/2.16` | **`3.05/1.07` · `4.42/2.07`** |
+| **Table 4** (`lung_atlas` / `heart` / `pbmc` BEC) | scIB ($\uparrow$) | `0.8128` · `0.7983` · `0.8309` | `0.8097` · `0.8019` · `0.8125` | **`0.8080` · `0.7985` · `0.8238`** |
+| **Table 5** (`pbmc_ifn` 7-fold LOO Average) | PCC ($\uparrow$) / $R^2$ ($\uparrow$) / WD ($\downarrow$) | `0.96` / `0.86` / `5.15` | `0.943` / `0.807` / `5.77` | **`0.940` / `0.792` / `5.86`** |
+
+See [`REPRODUCIBILITY.md`](REPRODUCIBILITY.md) for dataset URLs, model hyperparameters, per-dataset speedups (`v1` vs. `v0.2.0`), condition-encoding A/B comparison, and complete Tables 1–5 breakdowns.
 
 ---
 
 ## Environment Installation
 
-The package supports Python `>= 3.10` and PyTorch `>= 2.2.0` (preserving preinstalled CUDA PyTorch in Colab / workstation environments):
+`sc-save` supports Python `>= 3.10` and PyTorch `>= 2.2.0` (preserving preinstalled CUDA PyTorch in Colab / workstation environments):
 
-- Core stack: `anndata`, `scanpy`, `POT`, `numpy>=1.26.4`, `pandas>=2.2.0,<3.0`, `scikit-learn`, `scipy`, `torch>=2.2.0`
-- Optional extras in `pyproject.toml`:
-  - `[generation]`: `einops`, `flow-matching`
+- **Core stack**: `anndata`, `einops`, `numpy>=1.26.4`, `pandas>=2.2.0,<3.0`, `POT`, `scanpy`, `scikit-learn`, `scipy`, `torch>=2.2.0`, `tqdm` (with pure-PyTorch `CondOTPath`, `VPPath`, `VEPath`, and `euler`/`midpoint`/`rk4` solvers built in).
+- **Optional extras in `pyproject.toml`**:
+  - `[solvers]`: `flow-matching`, `torchdiffeq` (for adaptive ODE solvers such as `dopri5`)
+  - `[viz]`: `matplotlib`, `pyparsing`
   - `[bec]`: `scib`, `igraph`, `leidenalg`
   - `[datasets]`: `gdown`, `pyyaml`, `requests`
   - `[all]`: all extras combined
 
-From the repository root:
+```bash
+# Install from PyPI (core package + CLI)
+pip install sc-save
+
+# Or install with all benchmark/dataset/evaluation extras
+pip install "sc-save[all]"
+```
+
+From a local repository clone:
 
 ```bash
 # Using uv
@@ -271,13 +334,15 @@ pip install -e ".[all]"
 Optional verification:
 
 ```bash
-uv run pytest -v
-uv run python examples/reproduce_iclr2026.py --tasks all --dry-run
+pytest -v
+sc-save --version
+sc-save reproduce --tasks all --dry-run
 ```
 
 Notes:
 
 - `flash-attn` is optional and is not required for the public examples. The released configs keep `is_flash_attn=False`.
+- `flow-matching` and `torchdiffeq` are optional (`[solvers]`); core generation uses pure-PyTorch OT Flow Matching and fixed-step ODE/SDE solvers.
 - The public workflow does not require `timm`, `torchvision`, or `rpy2`.
 
 ---
@@ -498,7 +563,7 @@ Main outputs:
 
 - `train.h5ad` / `test.h5ad` — unscaled splits
 - `SAVE_pred.h5ad` — predicted stimulated cells
-- `train_scaler.pkl` — fitted MaxAbsScaler
+- `train_scaler.pkl` — fitted `MaxAbsExpressionScaler`
 - `report.json` — parameters, timing, and evaluation metrics (R2, MSE, PCC)
 
 #### Leave-One-Out Evaluation

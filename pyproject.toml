@@ -1,24 +1,46 @@
 [build-system]
-requires = ["setuptools>=68", "wheel"]
+requires = ["setuptools>=77", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "sc-save-public"
-version = "0.1.0"
-description = "Public examples and utilities for gradually open-sourcing SAVE workflows."
+name = "sc-save"
+version = "0.2.0"
+description = "SAVE: A Generalizable Framework for Multi-Condition Single-Cell Generation with Gene Block Attention."
 readme = "README.md"
 requires-python = ">=3.10"
-license = { text = "MIT" }
+license = "MIT"
+license-files = ["LICENSE"]
 authors = [
-  { name = "Lijiahao" },
+  { name = "Jiahao Li" },
+]
+keywords = [
+  "single-cell",
+  "scrna-seq",
+  "generative-model",
+  "flow-matching",
+  "vae",
+  "transformer",
+  "gene-blocks",
+  "batch-effect-correction",
+  "perturbation-prediction",
+]
+classifiers = [
+  "Development Status :: 4 - Beta",
+  "Intended Audience :: Science/Research",
+  "Operating System :: OS Independent",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.10",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Topic :: Scientific/Engineering :: Bio-Informatics",
+  "Topic :: Scientific/Engineering :: Artificial Intelligence",
 ]
 dependencies = [
   "anndata>=0.10.9",
-  "matplotlib>=3.8.0",
+  "einops>=0.8.0",
   "numpy>=1.26.4",
   "pandas>=2.2.0,<3.0",
   "POT>=0.9.5",
-  "pyparsing>=3.1.0",
   "scanpy>=1.10.0",
   "scikit-learn>=1.5.0",
   "scipy>=1.13.0",
@@ -26,10 +48,20 @@ dependencies = [
   "tqdm>=4.66.0",
 ]
 
+[project.urls]
+Homepage = "https://save.argonx.dev"
+Repository = "https://github.com/fdu-wangfeilab/sc-save"
+Issues = "https://github.com/fdu-wangfeilab/sc-save/issues"
+Paper = "https://openreview.net/forum?id=l7QEoK4uDP"
+
 [project.optional-dependencies]
-generation = [
-  "einops>=0.8.0",
+solvers = [
   "flow-matching>=1.0.10",
+  "torchdiffeq>=0.2.5",
+]
+viz = [
+  "matplotlib>=3.8.0",
+  "pyparsing>=3.1.0",
 ]
 bec = [
   "igraph>=0.10.0",
@@ -42,17 +74,25 @@ datasets = [
   "pyyaml>=6.0",
   "requests>=2.31.0",
 ]
+generation = [
+  "flow-matching>=1.0.10",
+]
 all = [
-  "einops>=0.8.0",
   "flow-matching>=1.0.10",
   "gdown>=5.0.0",
   "igraph>=0.10.0",
   "leidenalg>=0.10.0",
+  "matplotlib>=3.8.0",
   "pandas>=2.2.0,<3.0",
+  "pyparsing>=3.1.0",
   "pyyaml>=6.0",
   "requests>=2.31.0",
   "scib>=1.1.4",
+  "torchdiffeq>=0.2.5",
 ]
+
+[project.scripts]
+sc-save = "sc_save.cli:main"
 
 [dependency-groups]
 dev = [
@@ -64,6 +104,10 @@ package-dir = { "" = "src" }
 
 [tool.setuptools.packages.find]
 where = ["src"]
+include = ["sc_save*", "sc_save_public*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
 
 [tool.uv]
 default-groups = ["dev"]

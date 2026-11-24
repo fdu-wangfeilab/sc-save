@@ -1,13 +1,20 @@
 """Run leave-one-out perturbation prediction for all (or selected) cell types."""
 
 import argparse
+from pathlib import Path
+import sys
 
-from sc_save_public.perturbation_prediction import (
+SRC_DIR = Path(__file__).resolve().parents[2] / "src"
+if str(SRC_DIR) not in sys.path:
+    sys.path.insert(0, str(SRC_DIR))
+
+from sc_save.workflows.perturbation import (
     DEFAULT_CONDITION_KEY,
     DEFAULT_CONTROL_CONDITION,
     DEFAULT_LABEL_KEY,
     DEFAULT_OUTPUT_DIR,
     DEFAULT_TARGET_CONDITION,
+    PERTURB_TRAIN_CONFIG,
     run_leave_one_out,
 )
 
@@ -52,8 +59,6 @@ def main():
     args = parse_args()
     train_config = None
     if args.epoch is not None:
-        from sc_save_public.perturbation_prediction import PERTURB_TRAIN_CONFIG
-
         train_config = dict(PERTURB_TRAIN_CONFIG)
         train_config["epoch"] = args.epoch
     workers: int | str = args.workers if args.workers.strip().lower() == "auto" else int(args.workers)
