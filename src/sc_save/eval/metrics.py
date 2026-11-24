@@ -101,7 +101,9 @@ def _sum_rbf_tiled(
         j_start = i0 if symmetric else 0
         for j0 in range(j_start, nb, tile_size):
             j1 = min(j0 + tile_size, nb)
-            dist_sq = asqi - 2.0 * torch.mm(ai, B[j0:j1].t()) + b_sq[j0:j1].t()
+            dist_sq = (asqi - 2.0 * torch.mm(ai, B[j0:j1].t()) + b_sq[j0:j1].t()).clamp_min_(0.0)
+            if symmetric and j0 == i0:
+                dist_sq.fill_diagonal_(0.0)
             k_blk = torch.zeros_like(dist_sq)
             for gamma in gammas:
                 k_blk = k_blk + torch.exp(-gamma * dist_sq)
