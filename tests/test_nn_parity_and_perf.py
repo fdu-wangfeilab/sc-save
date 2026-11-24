@@ -853,3 +853,39 @@ def test_build_joint_pca_chunked_and_hvg_no_mutation():
     )
     assert len(expr_df) == 4
     assert list(gt_sp.var.columns) == var_cols_before
+
+
+def test_streaming_randomized_pca_matches_sklearn_pca():
+    import anndata as ad
+    from scipy import sparse
+    from sklearn.decomposition import PCA
+    from sc_save.eval.generation import _streaming_randomized_pca, build_joint_pca
+
+    rng = np.random.default_rng(505)
+    low_rank = rng.normal(size=(48, 6)).astype(np.float32)
+    proj = rng.normal(size=(6, 40)).astype(np.float32)
+    base = np.maximum(0.0, low_rank @ proj + 0.05 * rng.normal(size=(48, 40))).astype(np.float32)
+    gt_x = base[:24]
+    gen_x = base[24:]
+    gt_sp_mat = sparse.csr_matrix(gt_x)
+
+    gt_pca, gen_pca = _streaming_randomized_pca(
+        gt_sp_mat, gen_x, n_components=5, chunk_size=7, n_oversamples=12, n_iter=6, seed=0
+    )
+    comb_pca = np.concatenate([gt_pca, gen_pca], axis=0)
+
+    ref_pca = PCA(n_components=5, svd_solver="full").fit_transform(np.concatenate([gt_x, gen_x], axis=0))
+    # Singular values / Euclidean pairwise distances are invariant to eigenvector sign flips.
+    np.testing.assert_allclose(np.var(comb_pca, axis=0), np.var(ref_pca, axis=0), atol=1e-3, rtol=1e-3)
+    d_stream = np.linalg.norm(comb_pca[:, None, :] - comb_pca[None, :, :], axis=-1)
+    d_ref = np.linalg.norm(ref_pca[:, None, :] - ref_pca[None, :, :], axis=-1)
+    np.testing.assert_allclose(d_stream, d_ref, atol=1e-3, rtol=1e-3)
+
+    obs = pd.DataFrame({"cell_type": ["T"] * 24}, index=[f"c_{i}" for i in range(24)])
+    var = pd.DataFrame(index=pd.Index([f"g_{i}" for i in range(40)], dtype="object"))
+    gt_ad = ad.AnnData(X=gt_sp_mat, obs=obs.copy(), var=var.copy())
+    gen_ad = ad.AnnData(X=gen_x.copy(), obs=obs.copy(), var=var.copy())
+    k = build_joint_pca(gt_ad, gen_ad, n_components=5, chunk_size=7, streaming_threshold_bytes=1)
+    assert k == 5
+    np.testing.assert_allclose(np.abs(gt_ad.obsm["X_pca"]), np.abs(gt_pca), atol=1e-4, rtol=1e-4)
+    np.testing.assert_allclose(np.abs(gen_ad.obsm["X_pca"]), np.abs(gen_pca), atol=1e-4, rtol=1e-4)

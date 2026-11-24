@@ -106,17 +106,103 @@ def align_generated_to_target_vars(
     return gt_data, gen_data, "assigned"
 
 
+def _streaming_randomized_pca(
+    gt_x: Any,
+    gen_x: Any,
+    n_components: int,
+    *,
+    chunk_size: int = 4096,
+    n_oversamples: int = 10,
+    n_iter: int = 4,
+    seed: int = 0,
+) -> tuple[np.ndarray, np.ndarray]:
+    """Compute exact joint PCA projections via chunked randomized SVD without concatenation."""
+    n_gt, n_vars = int(gt_x.shape[0]), int(gt_x.shape[1])
+    n_gen = int(gen_x.shape[0])
+    n_total = n_gt + n_gen
+    k = min(n_components, n_total, n_vars)
+    n_random = min(n_total, n_vars, k + n_oversamples)
+
+    def _iter_chunks():
+        for offset, mat, nrows in ((0, gt_x, n_gt), (n_gt, gen_x, n_gen)):
+            is_sp = sparse.issparse(mat)
+            for s in range(0, nrows, chunk_size):
+                e = min(s + chunk_size, nrows)
+                yield offset + s, offset + e, mat[s:e], is_sp
+
+    sum_vec = np.zeros(n_vars, dtype=np.float64)
+    for _, _, blk, is_sp in _iter_chunks():
+        if is_sp:
+            sum_vec += np.asarray(blk.sum(axis=0), dtype=np.float64).ravel()
+        else:
+            sum_vec += np.asarray(blk, dtype=np.float32).sum(axis=0, dtype=np.float64)
+    mean = (sum_vec / float(n_total)).astype(np.float32)
+
+    rng = np.random.default_rng(seed)
+    omega = rng.standard_normal((n_vars, n_random), dtype=np.float32)
+
+    q = np.empty((n_total, n_random), dtype=np.float32)
+    mean_omega = mean @ omega
+    for s, e, blk, is_sp in _iter_chunks():
+        prod = blk @ omega if is_sp else np.asarray(blk, dtype=np.float32) @ omega
+        q[s:e] = np.asarray(prod, dtype=np.float32) - mean_omega
+    q, _ = np.linalg.qr(q, mode="reduced")
+
+    for _ in range(n_iter):
+        z = np.zeros((n_vars, n_random), dtype=np.float32)
+        q_sum = q.sum(axis=0, dtype=np.float64).astype(np.float32)
+        for s, e, blk, is_sp in _iter_chunks():
+            qs = q[s:e]
+            prod = blk.T @ qs if is_sp else np.asarray(blk, dtype=np.float32).T @ qs
+            z += np.asarray(prod, dtype=np.float32)
+        z -= np.outer(mean, q_sum)
+        z, _ = np.linalg.qr(z, mode="reduced")
+
+        mean_z = mean @ z
+        for s, e, blk, is_sp in _iter_chunks():
+            prod = blk @ z if is_sp else np.asarray(blk, dtype=np.float32) @ z
+            q[s:e] = np.asarray(prod, dtype=np.float32) - mean_z
+        q, _ = np.linalg.qr(q, mode="reduced")
+
+    b = np.zeros((n_random, n_vars), dtype=np.float32)
+    q_sum = q.sum(axis=0, dtype=np.float64).astype(np.float32)
+    for s, e, blk, is_sp in _iter_chunks():
+        qs = q[s:e]
+        prod = (blk.T @ qs).T if is_sp else qs.T @ np.asarray(blk, dtype=np.float32)
+        b += np.asarray(prod, dtype=np.float32)
+    b -= np.outer(q_sum, mean)
+
+    u_b, s_vals, _ = np.linalg.svd(b, full_matrices=False)
+    x_pca = np.asarray((q @ u_b[:, :k]) * s_vals[:k], dtype=np.float32)
+    return np.ascontiguousarray(x_pca[:n_gt]), np.ascontiguousarray(x_pca[n_gt:])
+
+
 def build_joint_pca(
     gt_data: ad.AnnData,
     gen_data: ad.AnnData,
     n_components: int,
     chunk_size: int = 4096,
+    *,
+    streaming_threshold_bytes: int = 4 * (1024**3),
 ) -> int:
     n_gt, n_vars = int(gt_data.n_obs), int(gt_data.n_vars)
     n_gen = int(gen_data.n_obs)
     actual_n_components = min(n_components, n_gt + n_gen, n_vars)
     if actual_n_components < 1:
         raise ValueError("PCA requires at least one sample and one feature")
+
+    if (n_gt + n_gen) * n_vars * 4 > streaming_threshold_bytes:
+        print(f"[pipeline] streaming randomized PCA with n_components={actual_n_components}")
+        gt_pca, gen_pca = _streaming_randomized_pca(
+            gt_data.X,
+            gen_data.X,
+            actual_n_components,
+            chunk_size=chunk_size,
+        )
+        gt_data.obsm["X_pca"] = gt_pca
+        gen_data.obsm["X_pca"] = gen_pca
+        gc.collect()
+        return actual_n_components
 
     combined_x = np.empty((n_gt + n_gen, n_vars), dtype=np.float32)
     for dst_offset, src_x, n_rows in (
