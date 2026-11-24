@@ -889,3 +889,17 @@ def test_streaming_randomized_pca_matches_sklearn_pca():
     assert k == 5
     np.testing.assert_allclose(np.abs(gt_ad.obsm["X_pca"]), np.abs(gt_pca), atol=1e-4, rtol=1e-4)
     np.testing.assert_allclose(np.abs(gen_ad.obsm["X_pca"]), np.abs(gen_pca), atol=1e-4, rtol=1e-4)
+
+
+def test_tiled_mix_rbf_mmd2_exact_parity():
+    from sc_save.eval.metrics import mix_rbf_mmd2
+
+    torch.manual_seed(606)
+    x = torch.randn(37, 8)
+    y = torch.randn(37, 8) + 0.25
+    sigmas = [0.01, 0.1, 1, 10, 100]
+
+    for biased in (True, False):
+        full_val = float(mix_rbf_mmd2(x, y, sigmas, biased=biased, tile_threshold=1000).item())
+        tiled_val = float(mix_rbf_mmd2(x, y, sigmas, biased=biased, tile_threshold=1, tile_size=11).item())
+        assert tiled_val == pytest.approx(full_val, abs=1e-5, rel=1e-5)

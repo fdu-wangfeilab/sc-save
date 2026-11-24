@@ -84,15 +84,66 @@ def _mmd2(
     return Kt_XX_sum / (m * (m - 1)) + Kt_YY_sum / (m * (m - 1)) - 2.0 * K_XY_sum / (m * m)
 
 
+def _sum_rbf_tiled(
+    A: torch.Tensor,
+    B: torch.Tensor,
+    a_sq: torch.Tensor,
+    b_sq: torch.Tensor,
+    gammas: list[float],
+    tile_size: int = 2048,
+    symmetric: bool = False,
+) -> torch.Tensor:
+    na, nb = A.size(0), B.size(0)
+    total = torch.zeros((), device=A.device, dtype=torch.float32)
+    for i0 in range(0, na, tile_size):
+        i1 = min(i0 + tile_size, na)
+        ai, asqi = A[i0:i1], a_sq[i0:i1]
+        j_start = i0 if symmetric else 0
+        for j0 in range(j_start, nb, tile_size):
+            j1 = min(j0 + tile_size, nb)
+            dist_sq = asqi - 2.0 * torch.mm(ai, B[j0:j1].t()) + b_sq[j0:j1].t()
+            k_blk = torch.zeros_like(dist_sq)
+            for gamma in gammas:
+                k_blk = k_blk + torch.exp(-gamma * dist_sq)
+            blk_sum = k_blk.sum()
+            total = total + (blk_sum * 2.0 if (symmetric and j0 > i0) else blk_sum)
+    return total
+
+
 def mix_rbf_mmd2(
     X: torch.Tensor,
     Y: torch.Tensor,
     sigma_list: list[float],
     biased: bool = True,
+    *,
+    tile_threshold: int = 4096,
+    tile_size: int = 2048,
 ) -> torch.Tensor:
-    """Compute multi-bandwidth RBF-kernel MMD^2 between equal-sized samples ``X`` and ``Y``."""
-    K_XX, K_XY, K_YY = _mix_rbf_kernel(X, Y, sigma_list)
-    return _mmd2(K_XX, K_XY, K_YY, const_diagonal=False, biased=biased)
+    """Compute multi-bandwidth RBF-kernel MMD^2, tiling large inputs to bound RAM/VRAM."""
+    if X.size(0) != Y.size(0):
+        raise ValueError("RBF MMD requires X and Y to have the same number of rows")
+    m = X.size(0)
+    if m == 0 or (not biased and m <= 1):
+        return torch.tensor(0.0, device=X.device, dtype=X.dtype)
+    if m <= tile_threshold:
+        K_XX, K_XY, K_YY = _mix_rbf_kernel(X, Y, sigma_list)
+        return _mmd2(K_XX, K_XY, K_YY, const_diagonal=False, biased=biased)
+
+    gammas = [1.0 / (2 * (sigma**2)) for sigma in sigma_list]
+    x_sq = (X * X).sum(dim=1, keepdim=True)
+    y_sq = (Y * Y).sum(dim=1, keepdim=True)
+    sum_xx = _sum_rbf_tiled(X, X, x_sq, x_sq, gammas, tile_size=tile_size, symmetric=True)
+    sum_yy = _sum_rbf_tiled(Y, Y, y_sq, y_sq, gammas, tile_size=tile_size, symmetric=True)
+    sum_xy = _sum_rbf_tiled(X, Y, x_sq, y_sq, gammas, tile_size=tile_size, symmetric=False)
+    if biased:
+        denom = float(m * m)
+        return (sum_xx + sum_yy - 2.0 * sum_xy) / denom
+    diag_sum = float(m * len(sigma_list))
+    return (
+        (sum_xx - diag_sum) / float(m * (m - 1))
+        + (sum_yy - diag_sum) / float(m * (m - 1))
+        - 2.0 * sum_xy / float(m * m)
+    )
 
 
 def _wasserstein_from_dist_np(
@@ -100,8 +151,14 @@ def _wasserstein_from_dist_np(
     b: np.ndarray,
     dist_np: np.ndarray,
     power: int,
+    *,
+    inplace: bool = False,
 ) -> float:
-    cost_np = dist_np if power == 1 else np.square(dist_np)
+    cost_np = (
+        dist_np
+        if power == 1
+        else (np.square(dist_np, out=dist_np) if inplace else np.square(dist_np))
+    )
     result = ot.emd2(a, b, cost_np, numItermax=int(1e7))
     if power == 2:
         result = math.sqrt(max(0.0, float(result)))
@@ -124,7 +181,7 @@ def wasserstein(
 
     a, b = ot.unif(x0.shape[0]), ot.unif(x1.shape[0])
     dist_np = torch.cdist(x0, x1).detach().cpu().numpy()
-    return _wasserstein_from_dist_np(a, b, dist_np, power=power)
+    return _wasserstein_from_dist_np(a, b, dist_np, power=power, inplace=True)
 
 
 def _to_tensor(array, device: torch.device) -> torch.Tensor:
@@ -174,9 +231,10 @@ def compute_distribution_distances_batched(
     dist_np = torch.cdist(pred_2d, true_2d).detach().cpu().numpy()
 
     metrics: dict[str, float] = {
-        "1-Wasserstein": _wasserstein_from_dist_np(a, b, dist_np, power=1),
-        "2-Wasserstein": _wasserstein_from_dist_np(a, b, dist_np, power=2),
+        "1-Wasserstein": _wasserstein_from_dist_np(a, b, dist_np, power=1, inplace=False),
+        "2-Wasserstein": _wasserstein_from_dist_np(a, b, dist_np, power=2, inplace=True),
     }
+    del dist_np
 
     if is_mmd:
         min_size = min(pred_t.shape[0], true_t.shape[0])

@@ -342,7 +342,10 @@ def compute_distribution_metrics_by_condition(
             )
         )
 
-    effective_workers = resolve_eval_workers(eval_workers)
+    max_group_cells = max((t[1] for t in tasks), default=0)
+    effective_workers = (
+        1 if max_group_cells > 8000 else resolve_eval_workers(eval_workers)
+    )
     eval_device = torch.device("cpu") if effective_workers > 1 else device
 
     def _eval_one(task):
@@ -543,9 +546,29 @@ def run_conditional_distribution_evaluation(
         sort_cols=sort_cols,
     )
 
+    gt_shape = list(gt_data.shape)
+    gen_shape = list(gen_data.shape)
+    gt_pca_view = ad.AnnData(obs=gt_data.obs, obsm={"X_pca": gt_data.obsm["X_pca"]})
+    gen_pca_view = ad.AnnData(obs=gen_data.obs, obsm={"X_pca": gen_data.obsm["X_pca"]})
+
+    expression_summary = {}
+    expression_metrics_df: pd.DataFrame | None = None
+    if include_expression_metrics and bool(merged_distro["is_equal"].any()):
+        expression_metrics_df = compute_expression_metrics_by_condition(
+            gt_data=gt_data,
+            gen_data=gen_data,
+            merged_distro=merged_distro,
+            cond_cols=cond_cols,
+            hvg_top_genes=hvg_top_genes,
+            top_gene_count=top_gene_count,
+        )
+
+    del gt_data, gen_data
+    gc.collect()
+
     distribution_metrics_df = compute_distribution_metrics_by_condition(
-        gt_data=gt_data,
-        gen_data=gen_data,
+        gt_data=gt_pca_view,
+        gen_data=gen_pca_view,
         merged_distro=merged_distro,
         cond_cols=cond_cols,
         model_name=model_name,
@@ -555,16 +578,7 @@ def run_conditional_distribution_evaluation(
     )
 
     metrics_df = distribution_metrics_df.copy()
-    expression_summary = {}
-    if include_expression_metrics and not distribution_metrics_df.empty:
-        expression_metrics_df = compute_expression_metrics_by_condition(
-            gt_data=gt_data,
-            gen_data=gen_data,
-            merged_distro=merged_distro,
-            cond_cols=cond_cols,
-            hvg_top_genes=hvg_top_genes,
-            top_gene_count=top_gene_count,
-        )
+    if expression_metrics_df is not None and not distribution_metrics_df.empty:
         metrics_df = distribution_metrics_df.merge(
             expression_metrics_df,
             on=cond_cols,
@@ -643,8 +657,8 @@ def run_conditional_distribution_evaluation(
         "cond_cols": cond_cols,
         "sort_cols": sort_cols,
         "device": str(device),
-        "target_shape": list(gt_data.shape),
-        "generated_shape": list(gen_data.shape),
+        "target_shape": gt_shape,
+        "generated_shape": gen_shape,
         "var_alignment": var_alignment,
         "pca_components": pca_n_components,
         "distribution": {
