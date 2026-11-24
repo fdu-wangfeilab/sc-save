@@ -318,20 +318,40 @@ class MaxAbsExpressionScaler:
         self.scale_ = scale.astype(np.float32, copy=False)
         return self
 
-    def transform(self, X: np.ndarray | sparse.spmatrix) -> np.ndarray | sparse.spmatrix:
+    def transform(
+        self,
+        X: np.ndarray | sparse.spmatrix,
+        *,
+        inplace: bool = False,
+    ) -> np.ndarray | sparse.spmatrix:
         if sparse.issparse(X):
             scale = self._check_fitted(X.shape[1])
-            out = (
-                X.copy()
-                if (sparse.isspmatrix_csr(X) or sparse.isspmatrix_csc(X))
-                else X.tocsr(copy=True)
-            )
-            out.data = out.data.astype(np.float32, copy=True)
+            if (
+                inplace
+                and (sparse.isspmatrix_csr(X) or sparse.isspmatrix_csc(X))
+                and X.data.dtype == np.float32
+            ):
+                out = X
+            else:
+                out = (
+                    X.copy()
+                    if (sparse.isspmatrix_csr(X) or sparse.isspmatrix_csc(X))
+                    else X.tocsr(copy=True)
+                )
+                out.data = out.data.astype(np.float32, copy=True)
             inv_scale = (1.0 / scale).astype(np.float32, copy=False)
             inplace_column_scale(out, inv_scale)
             return out
 
-        arr = np.array(X, dtype=np.float32, copy=True)
+        if (
+            inplace
+            and isinstance(X, np.ndarray)
+            and X.dtype == np.float32
+            and X.flags.writeable
+        ):
+            arr = X
+        else:
+            arr = np.array(X, dtype=np.float32, copy=True)
         if arr.ndim != 2:
             raise ValueError(f"Expected 2D matrix, got shape {arr.shape}")
         scale = self._check_fitted(arr.shape[1])
@@ -339,20 +359,38 @@ class MaxAbsExpressionScaler:
         return arr
 
     def inverse_transform(
-        self, X: np.ndarray | sparse.spmatrix
+        self,
+        X: np.ndarray | sparse.spmatrix,
+        *,
+        inplace: bool = False,
     ) -> np.ndarray | sparse.spmatrix:
         if sparse.issparse(X):
             scale = self._check_fitted(X.shape[1])
-            out = (
-                X.copy()
-                if (sparse.isspmatrix_csr(X) or sparse.isspmatrix_csc(X))
-                else X.tocsr(copy=True)
-            )
-            out.data = out.data.astype(np.float32, copy=True)
+            if (
+                inplace
+                and (sparse.isspmatrix_csr(X) or sparse.isspmatrix_csc(X))
+                and X.data.dtype == np.float32
+            ):
+                out = X
+            else:
+                out = (
+                    X.copy()
+                    if (sparse.isspmatrix_csr(X) or sparse.isspmatrix_csc(X))
+                    else X.tocsr(copy=True)
+                )
+                out.data = out.data.astype(np.float32, copy=True)
             inplace_column_scale(out, scale.astype(np.float32, copy=False))
             return out
 
-        arr = np.array(X, dtype=np.float32, copy=True)
+        if (
+            inplace
+            and isinstance(X, np.ndarray)
+            and X.dtype == np.float32
+            and X.flags.writeable
+        ):
+            arr = X
+        else:
+            arr = np.array(X, dtype=np.float32, copy=True)
         if arr.ndim != 2:
             raise ValueError(f"Expected 2D matrix, got shape {arr.shape}")
         scale = self._check_fitted(arr.shape[1])

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import gc
 import json
 import re
 import time
@@ -10,6 +11,8 @@ from typing import Any, Literal
 
 import anndata as ad
 import numpy as np
+from scipy import sparse
+from sklearn.utils.sparsefuncs import inplace_column_scale
 import torch
 
 from sc_save.config import FMConfig, SAVEConfig, TrainConfig, VAEConfig
@@ -112,12 +115,13 @@ def load_and_scale_adata(
     import scanpy as sc
 
     print(f"[pipeline] loading data from: {data_path}")
-    adata_ori = sc.read_h5ad(data_path)
+    adata_raw = sc.read_h5ad(data_path)
     if subset_size > 0:
-        adata_ori = adata_ori[:subset_size].copy()
+        adata_ori = adata_raw[:subset_size].copy()
+        del adata_raw
         print(f"[pipeline] subset shape: {adata_ori.shape}")
     else:
-        adata_ori = adata_ori.copy()
+        adata_ori = adata_raw
         print(f"[pipeline] full shape: {adata_ori.shape}")
 
     if gene_block_size > 0:
@@ -126,8 +130,8 @@ def load_and_scale_adata(
         pad_idx = find_pad_index(adata_ori)
 
     scaler = MaxAbsExpressionScaler()
-    adata = adata_ori.copy()
-    adata.X = scaler.fit_transform(adata.X)
+    scaled_x = scaler.fit_transform(adata_ori.X)
+    adata = ad.AnnData(X=scaled_x, obs=adata_ori.obs.copy(), var=adata_ori.var.copy())
     return adata_ori, adata, scaler, pad_idx
 
 
@@ -243,6 +247,8 @@ def create_save_model_from_kwargs(
     cond_cols: list[str],
     model_kwargs: dict[str, Any],
     cond_encoding: Literal["legacy", "offset"] = "legacy",
+    *,
+    copy_adata: bool = True,
 ) -> SAVE:
     cfg = _config_from_model_kwargs(model_kwargs, cond_encoding=cond_encoding)
     return SAVE(
@@ -253,6 +259,7 @@ def create_save_model_from_kwargs(
         scale_data=False,
         pad_to_blocks=False,
         cond_encoding=cond_encoding,
+        copy_adata=copy_adata,
     )
 
 
@@ -461,36 +468,44 @@ def run_formal_generation(
             batch_size=split_bs,
             return_latents=True,
             inverse_scale=False,
-            trim_pad=False,
+            trim_pad=True,
         )
 
         active_scaler = split_scaler if split_scaler is not None else save_model.scaler
         if active_scaler is not None:
-            split_gen.X = active_scaler.inverse_transform(split_gen.X)
+            scale_trim = active_scaler.scale_[:pad_idx].astype(np.float32, copy=False)
+            if sparse.issparse(split_gen.X):
+                out_sp = split_gen.X.tocsr(copy=True)
+                out_sp.data = out_sp.data.astype(np.float32, copy=True)
+                inplace_column_scale(out_sp, scale_trim)
+                split_gen.X = out_sp
+            else:
+                x_arr = np.asarray(split_gen.X, dtype=np.float32)
+                if not x_arr.flags.writeable:
+                    x_arr = x_arr.copy()
+                x_arr *= scale_trim[None, :]
+                split_gen.X = x_arr
 
         split_gen.obs_names = [
             f"{len(split_gen_list)}_{k}_gen" for k in range(split_gen.n_obs)
         ]
         split_gen_list.append(split_gen)
-        split_target_list.append(split_adata_ori.copy())
+        split_target_list.append(split_adata_ori[:, :pad_idx].copy())
         total_z_fm.append(gen_z_fm)
         total_z_vae.append(z_from_vae)
 
-    gen_adata = (
-        ad.concat(split_gen_list) if len(split_gen_list) > 1 else split_gen_list[0].copy()
+    gen_trim = (
+        ad.concat(split_gen_list) if len(split_gen_list) > 1 else split_gen_list[0]
     )
-    target_adata = (
-        ad.concat(split_target_list) if len(split_target_list) > 1 else split_target_list[0].copy()
+    target_trim = (
+        ad.concat(split_target_list) if len(split_target_list) > 1 else split_target_list[0]
     )
     total_z_fm_arr = np.concatenate(total_z_fm, axis=0)
     total_z_vae_arr = np.concatenate(total_z_vae, axis=0)
 
-    gen_adata.obs["type"] = "gen"
-    gen_adata.obs.index = [f"{idx}_gen" for idx in range(gen_adata.shape[0])]
-    target_adata.obs["type"] = "ori"
-
-    gen_trim = gen_adata[:, :pad_idx].copy()
-    target_trim = target_adata[:, :pad_idx].copy()
+    gen_trim.obs["type"] = "gen"
+    gen_trim.obs.index = [f"{idx}_gen" for idx in range(gen_trim.shape[0])]
+    target_trim.obs["type"] = "ori"
 
     gen_path = out_dir / "generation.h5ad"
     target_path = out_dir / "target.h5ad"
@@ -502,13 +517,30 @@ def run_formal_generation(
     np.save(fm_latent_path, total_z_fm_arr)
     np.save(vae_latent_path, total_z_vae_arr)
 
+    gen_shape = list(gen_trim.shape)
+    target_shape = list(target_trim.shape)
+    gen_z_shape = list(total_z_fm_arr.shape)
+    vae_z_shape = list(total_z_vae_arr.shape)
+
+    del (
+        split_gen_list,
+        split_target_list,
+        gen_trim,
+        target_trim,
+        total_z_fm,
+        total_z_vae,
+        total_z_fm_arr,
+        total_z_vae_arr,
+    )
+    gc.collect()
+
     return {
         "generation_seconds": round(time.time() - start, 3),
         "condition_group_count": total_groups,
-        "gen_shape": list(gen_trim.shape),
-        "target_shape": list(target_trim.shape),
-        "gen_z_shape": list(total_z_fm_arr.shape),
-        "vae_z_shape": list(total_z_vae_arr.shape),
+        "gen_shape": gen_shape,
+        "target_shape": target_shape,
+        "gen_z_shape": gen_z_shape,
+        "vae_z_shape": vae_z_shape,
         "generation_path": str(gen_path),
         "target_path": str(target_path),
         "gen_z_path": str(fm_latent_path),
@@ -771,7 +803,11 @@ def run_formal_conditional_generation(
         cond_cols=cond_cols,
         model_kwargs=model_kwargs,
         cond_encoding=cond_encoding,
+        copy_adata=False,
     )
+    del adata_train
+    train_input_shape = list(adata_train_ori.shape)
+    train_n_vars = int(adata_train_ori.shape[1])
 
     ckpt_root = Path(ckpt_dir) if ckpt_dir is not None else out_dir / "ckpt"
     vae_ckpt_path, fm_ckpt_path = build_formal_ckpt_paths(
@@ -800,10 +836,10 @@ def run_formal_conditional_generation(
         save_model.save_vae_ckpt(vae_ckpt_path)
         vae_loaded = False
 
-    seq_length = adata_train_ori.shape[1] // gene_block_size
-    if seq_length < 1 or adata_train_ori.shape[1] % gene_block_size != 0:
+    seq_length = train_n_vars // gene_block_size
+    if seq_length < 1 or train_n_vars % gene_block_size != 0:
         raise ValueError(
-            f"Input gene count {adata_train_ori.shape[1]} must be a positive multiple of gene_block_size={gene_block_size}"
+            f"Input gene count {train_n_vars} must be a positive multiple of gene_block_size={gene_block_size}"
         )
 
     attach_formal_fm_model(
@@ -831,6 +867,10 @@ def run_formal_conditional_generation(
         save_model.save_fm_ckpt(fm_ckpt_path)
         fm_loaded = False
 
+    # Release scaled training matrix before loading held-out test splits & generating.
+    save_model.adata = None
+    gc.collect()
+
     split_targets: list[tuple[ad.AnnData, MaxAbsExpressionScaler]] = [
         (adata_train_ori, train_scaler)
     ]
@@ -841,6 +881,7 @@ def run_formal_conditional_generation(
             if col not in adata_test_raw.obs.columns:
                 raise ValueError(f"Test AnnData missing required obs column: '{col}'")
         adata_test_ori = _align_test_to_train_vars(adata_test_raw, adata_train_ori)
+        del adata_test_raw
         test_scaler = MaxAbsExpressionScaler().fit(adata_test_ori.X)
 
         if resolved_split == "auto":
@@ -864,10 +905,14 @@ def run_formal_conditional_generation(
     elif resolved_split in {"test", "all"}:
         raise ValueError(f"eval_split='{resolved_split}' requires test_data_path to be set")
 
+    if resolved_split == "test":
+        del adata_train_ori
+        gc.collect()
+
     gen_report = run_formal_generation(
         save_model=save_model,
-        adata_ori=adata_train_ori,
-        scaler=train_scaler,
+        adata_ori=split_targets[0][0],
+        scaler=split_targets[0][1],
         pad_idx=pad_idx,
         batch_size=effective_batch_size,
         seq_length=seq_length,
@@ -883,7 +928,7 @@ def run_formal_conditional_generation(
         "data_path": data_path,
         "test_data_path": test_data_path,
         "eval_split": resolved_split,
-        "input_shape": list(adata_train_ori.shape),
+        "input_shape": train_input_shape,
         "trimmed_gene_dim": int(pad_idx),
         "device": str(device),
         "condition_cols": cond_cols,

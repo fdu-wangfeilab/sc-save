@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
+import gc
 import inspect
 import json
 import os
@@ -326,6 +327,9 @@ def _run_cond_gen_and_eval(
         "cond_encoding": cond_encoding,
     }
     gen_report = run_formal_conditional_generation(**gen_kwargs)
+    gc.collect()
+    if torch.cuda.is_available():
+        torch.cuda.empty_cache()
 
     eval_kwargs: dict[str, Any] = {
         "gt_path": gen_report["target_path"],

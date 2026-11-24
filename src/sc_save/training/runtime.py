@@ -226,6 +226,28 @@ def _maybe_pin(tensor: torch.Tensor, enable: bool) -> tuple[torch.Tensor, bool]:
         return tensor, False
 
 
+def _copy_x_to_gpu_chunked(
+    x: np.ndarray | sparse.spmatrix | torch.Tensor,
+    *,
+    device: torch.device,
+    dtype: torch.dtype,
+    chunk_size: int = 4096,
+) -> torch.Tensor:
+    """Allocate target GPU tensor and copy row chunks without full host expansion."""
+    if isinstance(x, torch.Tensor):
+        return x.detach().to(device=device, dtype=dtype)
+    n_obs, n_vars = x.shape
+    x_gpu = torch.empty((n_obs, n_vars), dtype=dtype, device=device)
+    np_dtype = np.float16 if dtype == torch.float16 else np.float32
+    is_sp = sparse.issparse(x)
+    for start in range(0, n_obs, chunk_size):
+        end = min(start + chunk_size, n_obs)
+        block = x[start:end].toarray() if is_sp else x[start:end]
+        block_np = np.ascontiguousarray(np.asarray(block, dtype=np_dtype), dtype=np_dtype)
+        x_gpu[start:end].copy_(torch.from_numpy(block_np), non_blocking=False)
+    return x_gpu
+
+
 def prepare_resident_tensors(
     x: np.ndarray | sparse.spmatrix | torch.Tensor,
     y: np.ndarray | torch.Tensor,
@@ -262,9 +284,11 @@ def prepare_resident_tensors(
             (torch.float16, fp16_bytes),
         ):
             if needed_bytes <= budget:
-                x_cpu = _materialise_x_tensor(x, dtype=candidate_dtype)
+                x_gpu: torch.Tensor | None = None
                 try:
-                    x_gpu = x_cpu.to(device)
+                    x_gpu = _copy_x_to_gpu_chunked(
+                        x, device=device, dtype=candidate_dtype
+                    )
                     y_gpu = y_cpu.to(device)
                     emb_gpu = emb_cpu.to(device) if emb_cpu is not None else None
                     return ResidentTensors(
@@ -278,6 +302,7 @@ def prepare_resident_tensors(
                         pinned=False,
                     )
                 except RuntimeError:
+                    x_gpu = None
                     torch.cuda.empty_cache()
 
         # Fallback: pinned-memory CPU tensor + fast direct slice gather.

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 from concurrent.futures import ThreadPoolExecutor
+import gc
 import json
 import os
 from pathlib import Path
@@ -109,21 +110,36 @@ def build_joint_pca(
     gt_data: ad.AnnData,
     gen_data: ad.AnnData,
     n_components: int,
+    chunk_size: int = 4096,
 ) -> int:
-    gt_x = to_numpy_matrix(gt_data.X)
-    gen_x = to_numpy_matrix(gen_data.X)
-    combined_x = np.concatenate([gt_x, gen_x], axis=0)
-
-    actual_n_components = min(n_components, combined_x.shape[0], combined_x.shape[1])
+    n_gt, n_vars = int(gt_data.n_obs), int(gt_data.n_vars)
+    n_gen = int(gen_data.n_obs)
+    actual_n_components = min(n_components, n_gt + n_gen, n_vars)
     if actual_n_components < 1:
         raise ValueError("PCA requires at least one sample and one feature")
 
-    print(f"[pipeline] fitting PCA with n_components={actual_n_components}")
-    pca = PCA(n_components=actual_n_components)
-    pca.fit(combined_x)
+    combined_x = np.empty((n_gt + n_gen, n_vars), dtype=np.float32)
+    for dst_offset, src_x, n_rows in (
+        (0, gt_data.X, n_gt),
+        (n_gt, gen_data.X, n_gen),
+    ):
+        is_sp = sparse.issparse(src_x)
+        for start in range(0, n_rows, chunk_size):
+            end = min(start + chunk_size, n_rows)
+            block = src_x[start:end].toarray() if is_sp else src_x[start:end]
+            combined_x[dst_offset + start : dst_offset + end] = np.asarray(
+                block, dtype=np.float32
+            )
 
-    gt_data.obsm["X_pca"] = pca.transform(gt_x)
-    gen_data.obsm["X_pca"] = pca.transform(gen_x)
+    print(f"[pipeline] fitting PCA with n_components={actual_n_components}")
+    pca = PCA(n_components=actual_n_components, copy=False)
+    x_pca = pca.fit_transform(combined_x)
+    del combined_x
+
+    gt_data.obsm["X_pca"] = np.ascontiguousarray(x_pca[:n_gt])
+    gen_data.obsm["X_pca"] = np.ascontiguousarray(x_pca[n_gt:])
+    del x_pca
+    gc.collect()
     return actual_n_components
 
 
@@ -279,22 +295,22 @@ def compute_expression_metrics_by_condition(
 ) -> pd.DataFrame:
     cols = list(cond_cols)
     expected_columns = cols + ["top_gene_overlap", "pcc", "mse", "r2"]
-    gt_hvg_ref = gt_data.copy()
-    sc.pp.highly_variable_genes(
-        adata=gt_hvg_ref,
-        n_top_genes=min(hvg_top_genes, gt_hvg_ref.n_vars),
+    hvg_df = sc.pp.highly_variable_genes(
+        adata=gt_data,
+        n_top_genes=min(hvg_top_genes, gt_data.n_vars),
         subset=False,
+        inplace=False,
     )
-    hvg_mask = gt_hvg_ref.var["highly_variable"].to_numpy()
+    hvg_mask = hvg_df["highly_variable"].to_numpy()
     if not hvg_mask.any():
-        hvg_mask = np.ones(gt_hvg_ref.n_vars, dtype=bool)
+        hvg_mask = np.ones(gt_data.n_vars, dtype=bool)
 
-    gt_x_hvg = to_numpy_matrix(gt_hvg_ref.X[:, hvg_mask])
+    gt_x_hvg = to_numpy_matrix(gt_data.X[:, hvg_mask])
     gen_x_hvg = to_numpy_matrix(gen_data.X[:, hvg_mask])
-    hvg_var_names = np.asarray(gt_hvg_ref.var_names)[hvg_mask]
+    hvg_var_names = np.asarray(gt_data.var_names)[hvg_mask]
     top_gene_count = min(top_gene_count, hvg_var_names.shape[0])
 
-    gt_groups = _group_indices(gt_hvg_ref.obs, cols)
+    gt_groups = _group_indices(gt_data.obs, cols)
     gen_groups = _group_indices(gen_data.obs, cols)
 
     cond_metrics = []
@@ -307,7 +323,7 @@ def compute_expression_metrics_by_condition(
         gt_idx = gt_groups.get(group_key)
         gen_idx = gen_groups.get(group_key)
         if gt_idx is None:
-            gt_idx = np.flatnonzero(build_condition_mask(gt_hvg_ref, cond_dict))
+            gt_idx = np.flatnonzero(build_condition_mask(gt_data, cond_dict))
         if gen_idx is None:
             gen_idx = np.flatnonzero(build_condition_mask(gen_data, cond_dict))
 
@@ -424,7 +440,6 @@ def run_conditional_distribution_evaluation(
     validate_obs_cols(gen_data, cond_cols, "generated")
     gt_data, gen_data, var_alignment = align_generated_to_target_vars(gt_data, gen_data)
 
-    gen_data = gen_data.copy()
     gen_data.obs_names = [f"gen_{idx}" for idx in range(gen_data.n_obs)]
 
     pca_n_components = build_joint_pca(

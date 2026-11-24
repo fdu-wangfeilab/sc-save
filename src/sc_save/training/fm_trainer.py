@@ -16,6 +16,7 @@ from sc_save.training.runtime import (
     build_adamw,
     build_warmup_cosine_scheduler,
     enable_cuda_tf32,
+    extract_tensors_from_dataloader,
     get_autocast_context,
     get_gpu_tensor_budget_bytes,
     iter_resident_batches,
@@ -23,6 +24,75 @@ from sc_save.training.runtime import (
     resolve_resident_source,
     seed_everything,
 )
+
+
+def _materialise_chunk_tensor(x: Any, start: int, end: int) -> torch.Tensor:
+    if isinstance(x, torch.Tensor):
+        return x[start:end].detach().to(dtype=torch.float32)
+    block = x[start:end].toarray() if sparse.issparse(x) else x[start:end]
+    return torch.from_numpy(np.ascontiguousarray(np.asarray(block, dtype=np.float32), dtype=np.float32))
+
+
+def _precompute_posteriors_streaming(
+    vae: nn.Module,
+    x: Any,
+    y: Any,
+    batch_size: int,
+    device: torch.device,
+    amp_ctx: Any,
+) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.device, bool]:
+    """Encode ``x`` in chunks directly from raw storage without resident ``x`` allocation."""
+    n_samples = int(x.shape[0])
+    pre_bs = max(batch_size, 1024)
+    y_cpu = (
+        y.detach().to(dtype=torch.long)
+        if isinstance(y, torch.Tensor)
+        else torch.from_numpy(np.ascontiguousarray(np.asarray(y, dtype=np.int64)))
+    )
+    mu_chunks: list[torch.Tensor] = []
+    std_chunks: list[torch.Tensor] = []
+    store_device = device
+
+    with torch.inference_mode():
+        for start in range(0, n_samples, pre_bs):
+            end = min(start + pre_bs, n_samples)
+            x_b = _materialise_chunk_tensor(x, start, end).to(device=device, dtype=torch.float32)
+            y_b = y_cpu[start:end].to(device=device, dtype=torch.long)
+            mask_ids = torch.full((y_b.numel(),), vae.mask_id, device=device, dtype=torch.long)
+            mask_emb = vae.cond_embedder(mask_ids).reshape(y_b.shape[0], y_b.shape[1], -1)
+
+            with amp_ctx:
+                _, mu_b, var_b = vae.encoder(x_b, mask_emb)
+            mu_b = mu_b.float()
+            std_b = torch.sqrt(var_b.float())
+
+            if not mu_chunks and device.type == "cuda":
+                est_bytes = n_samples * (mu_b[0].numel() * 4 * 2 + y_b[0].numel() * 8)
+                if est_bytes > get_gpu_tensor_budget_bytes(device):
+                    store_device = torch.device("cpu")
+
+            mu_chunks.append(mu_b.to(store_device))
+            std_chunks.append(std_b.to(store_device))
+
+    if mu_chunks:
+        mu_all = torch.cat(mu_chunks, dim=0)
+        std_all = torch.cat(std_chunks, dim=0)
+    else:
+        mu_all = torch.empty((0, 0, 0), dtype=torch.float32, device=store_device)
+        std_all = torch.empty((0, 0, 0), dtype=torch.float32, device=store_device)
+    y_all = y_cpu.to(store_device, dtype=torch.long)
+
+    pinned = False
+    if store_device.type == "cpu" and device.type == "cuda" and torch.cuda.is_available():
+        try:
+            mu_all = mu_all.pin_memory()
+            std_all = std_all.pin_memory()
+            y_all = y_all.pin_memory()
+            pinned = True
+        except RuntimeError:
+            pinned = False
+
+    return mu_all, std_all, y_all, store_device, pinned
 
 
 def _precompute_posteriors(
@@ -126,28 +196,43 @@ def train_fm(
     fm.train()
 
     use_precompute = emb is None and not is_emb_ary
-    resident, batch_size, drop_last = resolve_resident_source(
-        x,
-        y,
-        dataloader,
-        device=device,
-        batch_size=batch_size,
-        drop_last=drop_last,
-        emb=emb,
-        is_emb_ary=is_emb_ary,
-    )
-
     precomputed: tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.device, bool] | None = None
     resident_fallback: ResidentTensors | None = None
-    if use_precompute and resident is not None:
-        try:
-            precomputed = _precompute_posteriors(vae, resident, batch_size, device, amp_ctx)
-        finally:
-            del resident
-            if device.type == "cuda" and torch.cuda.is_available():
-                torch.cuda.empty_cache()
+
+    if use_precompute:
+        raw_x, raw_y = x, y
+        if (raw_x is None or raw_y is None) and dataloader is not None:
+            batch_size = int(getattr(dataloader, "batch_size", None) or batch_size)
+            drop_last = bool(getattr(dataloader, "drop_last", drop_last))
+            extracted = extract_tensors_from_dataloader(dataloader, is_emb_ary=False)
+            if extracted is not None:
+                raw_x, raw_y, _ = extracted
+        if raw_x is not None and raw_y is not None:
+            precomputed = _precompute_posteriors_streaming(
+                vae, raw_x, raw_y, batch_size, device, amp_ctx
+            )
+        else:
+            resident_fallback, batch_size, drop_last = resolve_resident_source(
+                x,
+                y,
+                dataloader,
+                device=device,
+                batch_size=batch_size,
+                drop_last=drop_last,
+                emb=emb,
+                is_emb_ary=is_emb_ary,
+            )
     else:
-        resident_fallback = resident
+        resident_fallback, batch_size, drop_last = resolve_resident_source(
+            x,
+            y,
+            dataloader,
+            device=device,
+            batch_size=batch_size,
+            drop_last=drop_last,
+            emb=emb,
+            is_emb_ary=is_emb_ary,
+        )
 
     epoch_loss: dict[str, float] = {}
     epoch_iter = tqdm(range(num_epoch), ncols=80) if verbose else range(num_epoch)

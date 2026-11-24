@@ -634,3 +634,222 @@ def test_resident_tensors_sparse_and_dense_iteration():
     assert [b[0].shape[0] for b in batches] == [6, 6, 3]
     recon = torch.cat([b[0] for b in batches], dim=0)
     assert torch.allclose(recon, res_dense.x)
+
+
+def test_scaler_inplace_dense_and_sparse_parity():
+    from scipy import sparse
+    from sc_save.data.preprocessing import MaxAbsExpressionScaler
+
+    rng = np.random.default_rng(202)
+    x_raw = rng.uniform(0.0, 5.0, size=(12, 6)).astype(np.float32)
+    x_raw[:, 2] = 0.0
+    scaler = MaxAbsExpressionScaler().fit(x_raw)
+
+    ref_scaled = scaler.transform(x_raw, inplace=False)
+    x_in = x_raw.copy()
+    got_scaled = scaler.transform(x_in, inplace=True)
+    assert got_scaled is x_in
+    np.testing.assert_allclose(got_scaled, ref_scaled, atol=1e-7)
+
+    ref_inv = scaler.inverse_transform(ref_scaled, inplace=False)
+    got_inv = scaler.inverse_transform(got_scaled, inplace=True)
+    assert got_inv is x_in
+    np.testing.assert_allclose(got_inv, ref_inv, atol=1e-6)
+    np.testing.assert_allclose(got_inv, x_raw, atol=1e-6)
+
+    sp_raw = sparse.csr_matrix(x_raw)
+    ref_sp_scaled = scaler.transform(sp_raw, inplace=False)
+    sp_in = sp_raw.copy()
+    got_sp_scaled = scaler.transform(sp_in, inplace=True)
+    assert got_sp_scaled is sp_in
+    np.testing.assert_allclose(got_sp_scaled.toarray(), ref_sp_scaled.toarray(), atol=1e-7)
+
+    ref_sp_inv = scaler.inverse_transform(ref_sp_scaled, inplace=False)
+    got_sp_inv = scaler.inverse_transform(got_sp_scaled, inplace=True)
+    assert got_sp_inv is sp_in
+    np.testing.assert_allclose(got_sp_inv.toarray(), ref_sp_inv.toarray(), atol=1e-6)
+
+
+def test_copy_x_to_gpu_chunked_and_materialise_parity():
+    from scipy import sparse
+    from sc_save.training.runtime import _copy_x_to_gpu_chunked, _materialise_x_tensor
+
+    rng = np.random.default_rng(303)
+    x_dense64 = rng.uniform(0.0, 2.0, size=(11, 7))
+    x_sparse = sparse.csr_matrix(x_dense64.astype(np.float32))
+    x_tensor = torch.from_numpy(x_dense64.astype(np.float32))
+
+    ref32 = _materialise_x_tensor(x_dense64, dtype=torch.float32, chunk_size=4)
+    for src in (x_dense64, x_sparse, x_tensor):
+        got = _copy_x_to_gpu_chunked(src, device=torch.device("cpu"), dtype=torch.float32, chunk_size=4)
+        assert torch.allclose(got, ref32, atol=1e-6)
+
+    ref16 = _materialise_x_tensor(x_dense64, dtype=torch.float16, chunk_size=4)
+    got16 = _copy_x_to_gpu_chunked(x_sparse, device=torch.device("cpu"), dtype=torch.float16, chunk_size=4)
+    assert got16.dtype == torch.float16
+    assert torch.allclose(got16, ref16, atol=1e-3)
+
+
+def test_train_fm_streaming_posterior_precomputation_parity():
+    from scipy import sparse
+    from sc_save import FMConfig, SAVE, SAVEConfig, TrainConfig, VAEConfig
+    from sc_save.training.fm_trainer import _precompute_posteriors, _precompute_posteriors_streaming
+    from sc_save.training.runtime import get_autocast_context, prepare_resident_tensors
+
+    adata_dense = _make_padded_adata(n_obs=14, n_real_genes=8, pad_tail=0, seed=41)
+    adata_sp = adata_dense.copy()
+    adata_sp.X = sparse.csr_matrix(adata_dense.X)
+
+    cfg = SAVEConfig(
+        vae=VAEConfig(
+            hidden_dim=8,
+            enc_dim=4,
+            expand_dim=16,
+            enc_num_heads=2,
+            dec_num_heads=2,
+            enc_depth=1,
+            dec_depth=1,
+            gene_block_size=8,
+            latent_block_size=8,
+            is_enc_cond=False,
+        ),
+        fm=FMConfig(hidden_dim=16, embedding_dim=16, n_blocks=1, num_heads=2),
+        train=TrainConfig(vae_epochs=1, fm_epochs=2, batch_size=5, use_amp_vae=False, use_amp_fm=False),
+        seed=99,
+    )
+
+    m_sp = SAVE(adata_sp, condition_cols=["batch", "cell_type"], config=cfg, device="cpu")
+    m_dn = SAVE(adata_dense, condition_cols=["batch", "cell_type"], config=cfg, device="cpu")
+    m_dn.vae.load_state_dict(m_sp.vae.state_dict())
+    m_sp.init_fm()
+    m_dn.init_fm()
+    m_dn.fm.denoising_model.load_state_dict(m_sp.fm.denoising_model.state_dict())
+
+    y_ids = m_sp.vocab.encode_obs(m_sp.adata.obs)
+    amp_ctx, _ = get_autocast_context(torch.device("cpu"), use_amp=False)
+    resident = prepare_resident_tensors(m_dn.adata.X, y_ids, device=torch.device("cpu"))
+    mu_ref, std_ref, y_ref, _, _ = _precompute_posteriors(m_sp.vae, resident, 5, torch.device("cpu"), amp_ctx)
+    mu_stream, std_stream, y_stream, _, _ = _precompute_posteriors_streaming(
+        m_sp.vae, m_sp.adata.X, y_ids, 5, torch.device("cpu"), amp_ctx
+    )
+    assert torch.allclose(mu_stream, mu_ref, atol=1e-6)
+    assert torch.allclose(std_stream, std_ref, atol=1e-6)
+    assert torch.equal(y_stream, y_ref)
+
+    loss_sp = m_sp.fit_fm(epochs=2, batch_size=5, seed=123, verbose=False)
+    loss_dn = m_dn.fit_fm(epochs=2, batch_size=5, seed=123, verbose=False)
+    assert loss_sp["loss"] == pytest.approx(loss_dn["loss"], abs=1e-6)
+
+
+def test_save_copy_adata_false_and_preallocated_generate_parity():
+    from sc_save import FMConfig, SAVE, SAVEConfig, TrainConfig, VAEConfig
+    from sc_save.data.preprocessing import MaxAbsExpressionScaler
+
+    adata_pad = _make_padded_adata(n_obs=12, n_real_genes=10, pad_tail=6, seed=55)
+    pad_idx = 10
+    scaler = MaxAbsExpressionScaler().fit(adata_pad.X)
+    adata_pad.X = scaler.transform(adata_pad.X)
+
+    cfg = SAVEConfig(
+        vae=VAEConfig(
+            hidden_dim=8,
+            enc_dim=4,
+            expand_dim=16,
+            enc_num_heads=2,
+            dec_num_heads=2,
+            enc_depth=1,
+            dec_depth=1,
+            gene_block_size=8,
+            latent_block_size=8,
+            is_enc_cond=False,
+        ),
+        fm=FMConfig(hidden_dim=16, embedding_dim=16, n_blocks=1, num_heads=2, sample_steps=3),
+        train=TrainConfig(vae_epochs=1, fm_epochs=1, batch_size=4, use_amp_vae=False, use_amp_fm=False),
+        seed=17,
+    )
+
+    model_nocopy = SAVE(
+        adata_pad,
+        condition_cols=["batch", "cell_type"],
+        config=cfg,
+        device="cpu",
+        scale_data=False,
+        pad_to_blocks=False,
+        copy_adata=False,
+        scaler=scaler,
+        pad_idx=pad_idx,
+    )
+    assert model_nocopy.adata is adata_pad
+    model_nocopy.fit(vae_epochs=1, fm_epochs=1, verbose=False)
+
+    cond = {"batch": "b1", "cell_type": "T"}
+    torch.manual_seed(777)
+    gen_untrimmed = model_nocopy.generate(
+        conditions=cond,
+        n_cells=8,
+        batch_size=3,
+        steps=3,
+        inverse_scale=False,
+        trim_pad=False,
+    )
+    torch.manual_seed(777)
+    gen_trimmed_scaled = model_nocopy.generate(
+        conditions=cond,
+        n_cells=8,
+        batch_size=3,
+        steps=3,
+        inverse_scale=True,
+        trim_pad=True,
+    )
+    assert gen_untrimmed.shape == (8, 16)
+    assert gen_trimmed_scaled.shape == (8, 10)
+    expected = scaler.inverse_transform(gen_untrimmed.X)[:, :10]
+    np.testing.assert_allclose(np.asarray(gen_trimmed_scaled.X), expected, atol=1e-5)
+
+
+def test_build_joint_pca_chunked_and_hvg_no_mutation():
+    import anndata as ad
+    from scipy import sparse
+    from sklearn.decomposition import PCA
+    from sc_save.eval.generation import (
+        build_joint_pca,
+        compare_condition_distributions,
+        compute_expression_metrics_by_condition,
+        get_condition_distribution,
+    )
+
+    rng = np.random.default_rng(404)
+    gt_x = rng.uniform(0.0, 3.0, size=(20, 12)).astype(np.float32)
+    gen_x = rng.uniform(0.0, 3.0, size=(20, 12)).astype(np.float32)
+    obs = pd.DataFrame(
+        {
+            "batch": pd.Categorical(["b0"] * 10 + ["b1"] * 10),
+            "cell_type": pd.Categorical((["ct0"] * 5 + ["ct1"] * 5) * 2),
+        },
+        index=[f"c_{i}" for i in range(20)],
+    )
+    var = pd.DataFrame(index=pd.Index([f"g_{i}" for i in range(12)], dtype="object"))
+
+    gt_sp = ad.AnnData(X=sparse.csr_matrix(gt_x), obs=obs.copy(), var=var.copy())
+    gen_sp = ad.AnnData(X=gen_x.copy(), obs=obs.copy(), var=var.copy())
+
+    n_comp = build_joint_pca(gt_sp, gen_sp, n_components=5, chunk_size=7)
+    assert n_comp == 5
+
+    pca_ref = PCA(n_components=5)
+    pca_ref.fit(np.concatenate([gt_x, gen_x], axis=0))
+    np.testing.assert_allclose(gt_sp.obsm["X_pca"], pca_ref.transform(gt_x), atol=1e-4, rtol=1e-4)
+    np.testing.assert_allclose(gen_sp.obsm["X_pca"], pca_ref.transform(gen_x), atol=1e-4, rtol=1e-4)
+
+    merged = compare_condition_distributions(
+        get_condition_distribution(gt_sp, ["batch", "cell_type"]),
+        get_condition_distribution(gen_sp, ["batch", "cell_type"]),
+        ["batch", "cell_type"],
+        ["batch", "cell_type"],
+    )
+    var_cols_before = list(gt_sp.var.columns)
+    expr_df = compute_expression_metrics_by_condition(
+        gt_sp, gen_sp, merged, ["batch", "cell_type"], hvg_top_genes=6, top_gene_count=4
+    )
+    assert len(expr_df) == 4
+    assert list(gt_sp.var.columns) == var_cols_before

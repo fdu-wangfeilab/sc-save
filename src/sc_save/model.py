@@ -67,6 +67,7 @@ class SAVE:
         pad_to_blocks: bool = True,
         cond_encoding: Literal["legacy", "offset"] | None = None,
         *,
+        copy_adata: bool = True,
         vocab: ConditionVocabulary | None = None,
         scaler: MaxAbsExpressionScaler | None = None,
         n_genes: int | None = None,
@@ -100,19 +101,25 @@ class SAVE:
                     f"Input AnnData missing required obs columns: {missing_cols}"
                 )
 
-            if pad_to_blocks and cfg.vae.is_reshape_first:
-                padded_adata, detected_pad_idx = pad_to_block_size(
+            base_adata = adata
+            did_pad = False
+            if (
+                pad_to_blocks
+                and cfg.vae.is_reshape_first
+                and cfg.vae.gene_block_size > 0
+                and adata.n_vars % cfg.vae.gene_block_size != 0
+            ):
+                base_adata, detected_pad_idx = pad_to_block_size(
                     adata, cfg.vae.gene_block_size
                 )
-                working_adata = padded_adata.copy()
+                did_pad = True
             else:
-                working_adata = adata.copy()
-                detected_pad_idx = find_pad_index(working_adata)
+                detected_pad_idx = find_pad_index(adata)
 
             self.pad_idx = int(pad_idx if pad_idx is not None else detected_pad_idx)
-            self.var_names = [str(v) for v in working_adata.var_names]
-            self.num_genes = int(working_adata.n_vars)
-            self.num_cells = int(working_adata.n_obs)
+            self.var_names = [str(v) for v in base_adata.var_names]
+            self.num_genes = int(base_adata.n_vars)
+            self.num_cells = int(base_adata.n_obs)
 
             if vocab is not None:
                 self.vocab = vocab
@@ -121,17 +128,35 @@ class SAVE:
                     condition_cols=condition_cols,
                     mode=cfg.cond_encoding,
                     mask_token=cfg.mask_token,
-                ).fit(working_adata.obs)
+                ).fit(base_adata.obs)
 
             if scaler is not None:
                 self.scaler: MaxAbsExpressionScaler | None = scaler
                 if scale_data:
-                    working_adata.X = self.scaler.transform(working_adata.X)
+                    scaled_x = self.scaler.transform(base_adata.X)
+                    working_adata = ad.AnnData(
+                        X=scaled_x,
+                        obs=base_adata.obs.copy(),
+                        var=base_adata.var.copy(),
+                    )
+                elif did_pad or not copy_adata:
+                    working_adata = base_adata
+                else:
+                    working_adata = base_adata.copy()
             elif scale_data:
-                self.scaler = MaxAbsExpressionScaler().fit(working_adata.X)
-                working_adata.X = self.scaler.transform(working_adata.X)
+                self.scaler = MaxAbsExpressionScaler().fit(base_adata.X)
+                scaled_x = self.scaler.transform(base_adata.X)
+                working_adata = ad.AnnData(
+                    X=scaled_x,
+                    obs=base_adata.obs.copy(),
+                    var=base_adata.var.copy(),
+                )
             else:
                 self.scaler = None
+                if did_pad or not copy_adata:
+                    working_adata = base_adata
+                else:
+                    working_adata = base_adata.copy()
 
             self.adata: ad.AnnData | None = working_adata
         else:
@@ -495,10 +520,14 @@ class SAVE:
         *,
         inverse_scale: bool,
         trim_pad: bool,
+        inplace_scale: bool = False,
     ) -> ad.AnnData:
         x_out = np.asarray(x_mat, dtype=np.float32)
         if inverse_scale and self.scaler is not None:
-            x_out = np.asarray(self.scaler.inverse_transform(x_out), dtype=np.float32)
+            x_out = np.asarray(
+                self.scaler.inverse_transform(x_out, inplace=inplace_scale),
+                dtype=np.float32,
+            )
         var = pd.DataFrame(index=pd.Index(self.var_names, dtype="object"))
         if trim_pad and self.pad_idx < self.num_genes:
             x_out = x_out[:, : self.pad_idx]
@@ -628,7 +657,11 @@ class SAVE:
             else np.empty((0, self.num_genes), dtype=np.float32)
         )
         return self._postprocess_output(
-            x_all, obs=obs, inverse_scale=inverse_scale, trim_pad=trim_pad
+            x_all,
+            obs=obs,
+            inverse_scale=inverse_scale,
+            trim_pad=trim_pad,
+            inplace_scale=True,
         )
 
     @torch.inference_mode()
@@ -670,7 +703,11 @@ class SAVE:
             else np.empty((0, self.num_genes), dtype=np.float32)
         )
         return self._postprocess_output(
-            x_all, obs=src_adata.obs, inverse_scale=inverse_scale, trim_pad=trim_pad
+            x_all,
+            obs=src_adata.obs,
+            inverse_scale=inverse_scale,
+            trim_pad=trim_pad,
+            inplace_scale=True,
         )
 
     def _expand_generation_conditions(
@@ -749,8 +786,25 @@ class SAVE:
         self.fm.to(self.device).eval()
         self.fm.denoising_model.eval()
 
-        x_chunks: list[np.ndarray] = []
-        z_chunks: list[np.ndarray] = []
+        out_cols = (
+            self.pad_idx
+            if (trim_pad and self.pad_idx < self.num_genes)
+            else self.num_genes
+        )
+        x_all = np.empty((n_total, out_cols), dtype=np.float32)
+        z_all = (
+            np.empty(
+                (n_total, self.seq_length, self.config.vae.enc_dim),
+                dtype=np.float32,
+            )
+            if return_latents
+            else None
+        )
+        scale_slice = (
+            self.scaler.scale_[:out_cols]
+            if (inverse_scale and self.scaler is not None)
+            else None
+        )
 
         for start in range(0, n_total, bs):
             end = min(start + bs, n_total)
@@ -778,25 +832,18 @@ class SAVE:
             if min_clip is not None and min_clip > 0:
                 recon_b[recon_b < min_clip] = 0.0
 
-            x_chunks.append(recon_b.detach().cpu().numpy())
-            if return_latents:
-                z_chunks.append(z_b.detach().cpu().numpy())
+            x_all[start:end] = recon_b[:, :out_cols].detach().cpu().numpy()
+            if z_all is not None:
+                z_all[start:end] = z_b.detach().cpu().numpy()
 
-        x_all = (
-            np.concatenate(x_chunks, axis=0)
-            if x_chunks
-            else np.empty((0, self.num_genes), dtype=np.float32)
-        )
-        gen_adata = self._postprocess_output(
-            x_all, obs=obs, inverse_scale=inverse_scale, trim_pad=trim_pad
-        )
+        if scale_slice is not None:
+            x_all *= scale_slice[None, :]
 
-        if return_latents:
-            z_all = (
-                np.concatenate(z_chunks, axis=0)
-                if z_chunks
-                else np.empty((0, self.seq_length, self.config.vae.enc_dim), dtype=np.float32)
-            )
+        var = pd.DataFrame(
+            index=pd.Index(self.var_names[:out_cols], dtype="object")
+        )
+        gen_adata = ad.AnnData(X=x_all, obs=obs.copy(), var=var)
+        if z_all is not None:
             return gen_adata, z_all
         return gen_adata
 
