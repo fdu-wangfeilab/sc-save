@@ -20,6 +20,7 @@
 </p>
 
 <p>
+  <a href="#whats-new-in-v020-efficiency-memory--package-highlights">What's New in v0.2.0</a> &middot;
   <a href="#overview">Overview</a> &middot;
   <a href="#python-api--unified-cli-quickstart">Python API &amp; CLI</a> &middot;
   <a href="#llm-semantic-gene-blocks-vs-vit-patchify">LLM Blocks vs. ViT</a> &middot;
@@ -32,6 +33,27 @@
 </p>
 
 </div>
+
+---
+
+## What's New in v0.2.0: Efficiency, Memory & Package Highlights
+
+`sc-save v0.2.0` is now live on PyPI (`pip install sc-save` / `pip install "sc-save[all]"`), modularizing the codebase into the `sc_save` Python API and unified `sc-save` CLI with pure-PyTorch OT Flow Matching (`flow-matching` and `torchdiffeq` optional) and full `sc_save_public` backward compatibility. Across Google Colab GPU validation ([`results/iclr2026_v2_colab_validation.json`](results/iclr2026_v2_colab_validation.json)), `v0.2.0` passed all **10/10 primary ICLR 2026 benchmarks** with **zero regression gate failures**, matching or outperforming both the `v1` Blackwell G4 baseline and paper targets while dramatically accelerating generation and bounding host RAM on atlas-scale datasets:
+
+| Benchmark (`v0.2.0` GPU vs. `v1` Blackwell G4) | VAE Train | FM Train | Generation | Total Speedup | Quality (`v1` → **`v0.2.0`**) |
+| :--- | :---: | :---: | :---: | :---: | :--- |
+| **Lung Cancer** (114,692 cells, 5 conds · dedicated A100) | `1273.9s → 626.8s` (**2.03×**) | `1447.3s → 686.2s` (**2.11×**) | `364.5s → 43.2s` (**8.43×**) | **2.27×** | Unseen WD `5.39` → **`4.42`** (paper `4.63`), $R^2$ `0.647` → **`0.698`** |
+| **Dentate Gyrus** (14,570 cells · A100 conc. 2) | `198.2s → 118.0s` (**1.68×**) | `332.4s → 92.7s` (**3.59×**) | `25.6s → 13.6s` (**1.88×**) | **2.48×** | WD `8.08` → **`8.11`** (paper `9.16`), PCC **`0.991`** |
+| **PBMC3K** (2,110 cells · A100 conc. 2) | `35.3s → 27.3s` (**1.29×**) | `58.2s → 24.1s` (**2.42×**) | `5.7s → 1.5s` (**3.71×**) | **1.87×** | WD `12.76` → **`12.74`** (paper `19.14`), PCC `0.943` → **`0.948`** |
+| **Lung Atlas / PBMC** (Table 2 · 3-way conc. on 1 A100) | — | **1.26× / 1.34×** | **5.68× / 3.52×** | **1.08× / 1.09×** | Heart WD `8.83` → **`8.20`**, PBMC WD `5.39` → **`5.30`** |
+| **Tabula Muris** (196,311 × 22,400 · **L4 22 GB / 52 GB RAM**) | Runs end-to-end inside **52 GB host RAM** (streaming PCA + tiled RBF-MMD ≤ 16 MB) | — | — | Bounded RAM | WD `10.65` → **`10.21`**, MMD `0.036` → **`0.033`**, $R^2$ `0.952` → **`0.959`** |
+
+- **Faster Training**: Adaptive GPU residency (FP32/FP16/pinned-CPU tiers), chunked host-to-GPU transfers, streaming frozen-VAE posterior precomputation, `bfloat16` FM autocast, and removal of per-step GPU→CPU synchronization checks.
+- **Up to 8.43× Faster Generation & Transfer**: Pure-PyTorch `CondOTPath`/`VPPath`/`VEPath` and fixed-step ODE/SDE solvers with fused `[2*B]` CFG plus single-pass batched `SAVE.generate_like(...)` and `SAVE.transfer(..., input_cond="obs")`.
+- **Atlas-Scale Memory Safety (196k+ Cells in 52 GB RAM)**: In-place `MaxAbsExpressionScaler`, `copy_adata=False`, preallocated generation outputs, exact streaming randomized PCA, and exact tiled RBF-MMD (`<= 16 MB` tiles) with shared `cdist` OT-EMD.
+- **Clean Python Package & CLI**: `pip install sc-save`, high-level `SAVE` / `SAVEConfig` API with `.save()`/`.load()` (`0.0` GPU reload diff), unified `sc-save` CLI, and optional collision-free `cond_encoding="offset"` mode.
+
+See [Python API & CLI Quickstart](#python-api--unified-cli-quickstart), [Verified ICLR 2026 Baselines](#verified-iclr-2026-colab-baselines-v1-g4-vs-sc-save-v020-a100l4), and [`REPRODUCIBILITY.md`](REPRODUCIBILITY.md) for code examples and complete Tables 1–5 breakdowns.
 
 ---
 
