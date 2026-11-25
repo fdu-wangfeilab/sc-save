@@ -4,20 +4,20 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>SAVE · ICLR 2026 — Multi-Condition Single-Cell Generation with Gene Block Attention</title>
-  <meta name="description" content="SAVE (ICLR 2026): A generalizable latent VAE and Optimal-Transport Flow Matching framework for multi-condition single-cell RNA-seq generation, batch effect correction, and perturbation prediction with Gene Block Attention.">
+  <meta name="description" content="SAVE (ICLR 2026) & sc-save v0.2.0 on PyPI: A generalizable latent VAE and Optimal-Transport Flow Matching framework for multi-condition single-cell RNA-seq generation, batch effect correction, and perturbation prediction with Gene Block Attention.">
   <meta name="author" content="Jiahao Li, Jiayi Dong, Peng Ye, Xiaochi Zhou, Haohai Lu, Fei Wang">
   <meta name="theme-color" content="#f8f9f5">
   <link rel="canonical" href="https://save.argonx.dev/">
   <meta property="og:type" content="website">
   <meta property="og:title" content="SAVE · ICLR 2026 — Multi-Condition Single-Cell Generation with Gene Block Attention">
-  <meta property="og:description" content="191× speedup via Gene Block Attention, zero-shot extrapolation across 1–5 covariates, and unified SOTA performance across 8 benchmarks with verified Google Colab reproduction.">
+  <meta property="og:description" content="191× speedup via Gene Block Attention, sc-save v0.2.0 on PyPI (pip install sc-save), zero-shot extrapolation across 1–5 covariates, and 10/10 verified Colab A100/L4 ICLR 2026 benchmarks.">
   <meta property="og:url" content="https://save.argonx.dev/">
   <meta property="og:image" content="https://save.argonx.dev/assets/social_preview.png">
   <meta property="og:image:width" content="1280">
   <meta property="og:image:height" content="640">
   <meta name="twitter:card" content="summary_large_image">
-  <meta name="twitter:title" content="SAVE · ICLR 2026">
-  <meta name="twitter:description" content="Multi-condition single-cell generation, batch correction, and perturbation prediction with Gene Block Attention.">
+  <meta name="twitter:title" content="SAVE · ICLR 2026 · sc-save v0.2.0">
+  <meta name="twitter:description" content="Multi-condition single-cell generation, batch correction, and perturbation prediction with Gene Block Attention (pip install sc-save).">
   <meta name="twitter:image" content="https://save.argonx.dev/assets/social_preview.png">
   <link rel="icon" type="image/svg+xml" href="./favicon.svg">
   <link rel="stylesheet" href="./fonts/fonts.css">
@@ -34,7 +34,7 @@
       </a>
       <nav class="site-nav" aria-label="Page sections">
         <a href="#video">Video</a>
-        <a href="#gene-blocks">LLM Embedding</a>
+        <a href="#package">v0.2.0 / PyPI</a>
         <a href="#overview">Overview</a>
         <a href="#results">Results</a>
         <a href="#interpretability">Interpretability</a>
@@ -64,6 +64,10 @@
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/><path d="M16 13H8"/><path d="M16 17H8"/><path d="M10 9H8"/></svg>
           OpenReview Paper
         </a>
+        <a class="btn btn-colab" href="https://pypi.org/project/sc-save/">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/></svg>
+          PyPI sc-save v0.2.0
+        </a>
         <a class="btn btn-colab" href="https://colab.research.google.com/github/fdu-wangfeilab/sc-save/blob/main/notebooks/SAVE_ICLR2026_Reproduce_Colab.ipynb">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><polygon points="5 3 19 12 5 21 5 3"/></svg>
           Open in Colab
@@ -84,6 +88,12 @@
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M3 21c3 0 7-1 7-8V5c0-1.25-.756-2.017-2-2H4c-1.25 0-2 .75-2 1.972V11c0 1.25.75 2 2 2 1 0 1 0 1 1v1c0 1-1 2-2 2s-1 .008-1 1.031V20c0 1 0 1 1 1z"/><path d="M15 21c3 0 7-1 7-8V5c0-1.25-.757-2.017-2-2h-4c-1.25 0-2 .75-2 1.972V11c0 1.25.75 2 2 2h.75c0 2.25.25 4-2.75 4v3c0 1 0 1 1 1z"/></svg>
           BibTeX
         </a>
+      </div>
+
+      <div class="install-bar">
+        <span class="install-label">PyPI v0.2.0</span>
+        <code id="hero-pip-cmd">pip install sc-save</code>
+        <button class="copy-btn" type="button" data-copy-target="hero-pip-cmd" aria-live="polite">Copy</button>
       </div>
     </section>
 
@@ -138,12 +148,12 @@
         <article class="metric-card">
           <div class="metric-value">191× Faster</div>
           <div class="metric-label">Training &amp; Sampling Efficiency</div>
-          <p class="metric-sub">12.5 min vs. 2,391.2 min on RTX 3090 (~7 min on Colab G4, 20-step ODE)</p>
+          <p class="metric-sub">12.5 min vs. 2,391.2 min on RTX 3090 · up to 8.43× faster v0.2.0 generation (20-step ODE)</p>
         </article>
         <article class="metric-card">
-          <div class="metric-value">Tables 1–5</div>
-          <div class="metric-label">8 Benchmarks · Colab Verified</div>
-          <p class="metric-sub">Unified config across generation, BEC &amp; perturbation (11 datasets reproduced)</p>
+          <div class="metric-value">sc-save v0.2.0</div>
+          <div class="metric-label">PyPI Package · Tables 1–5 Verified</div>
+          <p class="metric-sub">Pure-PyTorch OT-FM · 10/10 Colab A100/L4 benchmarks passed (196k cells in 52 GB RAM)</p>
         </article>
       </div>
     </section>
@@ -248,7 +258,7 @@
       <div class="section-header">
         <p class="eyebrow"><span class="accent-line" aria-hidden="true"></span> 02 / Quantitative &amp; Qualitative Results</p>
         <h2 id="results-title">Consistent gains across generation, extrapolation, integration, and perturbation.</h2>
-        <p class="section-lead">Paper benchmark comparisons across multi-platform scRNA-seq cohorts (<strong>bold</strong> = best, <em>italic</em> = second best). Full per-dataset Colab Pro+ G4 reproduction numbers are summarized in <a href="#reproduce">Section 04</a>.</p>
+        <p class="section-lead">Paper benchmark comparisons across multi-platform scRNA-seq cohorts (<strong>bold</strong> = best, <em>italic</em> = second best). Full v1 Blackwell G4 and v0.2.0 A100/L4 Colab verification numbers are summarized in <a href="#reproduce">Section 04</a>.</p>
       </div>
 
       <!-- 2.1 Dual-Condition Generation -->
@@ -667,29 +677,94 @@
 
     <section id="reproduce" class="section-block site-width" aria-labelledby="repro-title">
       <div class="section-header">
-        <p class="eyebrow"><span class="accent-line" aria-hidden="true"></span> 04 / Verified ICLR 2026 Reproduction</p>
-        <h2 id="repro-title">One-click Google Colab &amp; local CLI verification.</h2>
+        <p class="eyebrow"><span class="accent-line" aria-hidden="true"></span> 04 / sc-save v0.2.0 &amp; Verified ICLR 2026 Reproduction</p>
+        <h2 id="repro-title">Install via PyPI, explore the Python API, or reproduce all 5 ICLR 2026 tables.</h2>
       </div>
 
-      <div class="repro-spotlight">
+      <div id="package" class="repro-spotlight">
         <div class="spotlight-topline">
-          <p class="eyebrow">Reproducibility · Colab Pro+ Verified</p>
-          <span class="spotlight-status"><span aria-hidden="true"></span> All 5 Tables (11 Datasets) Completed</span>
+          <p class="eyebrow">sc-save v0.2.0 · PyPI Live &amp; Colab Verified</p>
+          <span class="spotlight-status"><span aria-hidden="true"></span> 10/10 Primary Benchmarks Passed · 0 Regressions</span>
         </div>
-        <h3>Reproduce all 5 ICLR 2026 tables in Google Colab or locally</h3>
-        <p>All five quantitative benchmarks (<strong>Tables 1–5</strong>, 11 datasets) completed end-to-end on Colab Pro+ (<code>NVIDIA RTX PRO 6000 Blackwell Server Edition</code>, <code>94.97 GB</code> VRAM, PyTorch <code>2.14.1+cu130</code>, CUDA <code>13.0</code>) with TF32, SDPA, <code>bfloat16</code> Flow Matching autocast, and automatic GPU/CPU parallelism (<code>88m 15s</code> wall-clock for parallel Tables 1–4; <code>~7m</code> for single-run Heart).</p>
+        <h3>Install via PyPI or reproduce all 5 ICLR 2026 tables in Colab</h3>
+        <p><code>sc-save v0.2.0</code> (<code>pip install sc-save</code> / <code>pip install "sc-save[all]"</code>) modularizes SAVE into the <code>sc_save</code> Python API and unified <code>sc-save</code> CLI with pure-PyTorch OT Flow Matching (<code>flow-matching</code> / <code>torchdiffeq</code> optional). Across Colab GPU validation, <code>v0.2.0</code> delivers <strong>1.87×–2.48× faster end-to-end</strong> runs and up to <strong>8.43× faster generation</strong> vs. the v1 Blackwell G4 baseline on dedicated A100, runs <strong>Tabula Muris</strong> (<code>196,311 × 22,400</code>) end-to-end inside <strong>52 GB host RAM</strong> on Colab L4, and passes all <strong>10/10</strong> primary ICLR 2026 benchmarks with <code>0.0</code> GPU reload diff.</p>
         <div class="spotlight-actions">
-          <a class="btn btn-spotlight-primary" href="https://colab.research.google.com/github/fdu-wangfeilab/sc-save/blob/main/notebooks/SAVE_ICLR2026_Reproduce_Colab.ipynb">Launch Colab Notebook <span aria-hidden="true">↗</span></a>
+          <a class="btn btn-spotlight-primary" href="https://colab.research.google.com/github/fdu-wangfeilab/sc-save/blob/main/notebooks/SAVE_ICLR2026_Reproduce_Colab.ipynb">Launch Reproduce Colab <span aria-hidden="true">↗</span></a>
+          <a class="btn btn-spotlight-ghost" href="https://colab.research.google.com/github/fdu-wangfeilab/sc-save/blob/main/notebooks/SAVE_Quickstart_Tutorial.ipynb">Quickstart Tutorial Colab <span aria-hidden="true">↗</span></a>
+          <a class="btn btn-spotlight-ghost" href="https://pypi.org/project/sc-save/">PyPI (sc-save 0.2.0) <span aria-hidden="true">↗</span></a>
           <a class="btn btn-spotlight-ghost" href="https://github.com/fdu-wangfeilab/sc-save/blob/main/REPRODUCIBILITY.md">REPRODUCIBILITY.md <span aria-hidden="true">↗</span></a>
-          <a class="btn btn-spotlight-ghost" href="https://github.com/fdu-wangfeilab/sc-save/blob/main/results/iclr2026_colab_repro.json">Verified JSON Results <span aria-hidden="true">↗</span></a>
+          <a class="btn btn-spotlight-ghost" href="https://github.com/fdu-wangfeilab/sc-save/blob/main/results/iclr2026_v2_colab_validation.json">v0.2.0 Validation JSON <span aria-hidden="true">↗</span></a>
         </div>
         <div class="spotlight-meta">
-          <span><strong>Ref:</strong> <code>reproduce-iclr2026@307c925</code> (merged to <code>main</code>)</span>
-          <span><strong>Workers:</strong> <code>gpu_workers="auto"</code> (4) · <code>cpu_workers="auto"</code> (8)</span>
-          <span><strong>Notebook:</strong> <code>notebooks/SAVE_ICLR2026_Reproduce_Colab.ipynb</code></span>
+          <span><strong>Release:</strong> <code>sc-save v0.2.0</code> (PyPI)</span>
+          <span><strong>Validation:</strong> A100 80 GB &amp; L4 22 GB (52 GB RAM) vs. v1 Blackwell G4</span>
+          <span><strong>Parity:</strong> 64 unit/API tests · <code>0.0</code> GPU reload diff</span>
         </div>
       </div>
 
+      <div class="result-heading">
+        <h3>v0.2.0 Speedup &amp; Atlas Memory Highlights</h3>
+        <span class="result-badge">v0.2.0 Colab (A100 / L4) vs. v1 Blackwell G4</span>
+      </div>
+      <div class="table-wrap">
+        <table class="data-table">
+          <thead>
+            <tr>
+              <th>Benchmark (v0.2.0 GPU vs. v1 Blackwell G4)</th>
+              <th>VAE Train</th>
+              <th>FM Train</th>
+              <th>Generation</th>
+              <th>Total Speedup</th>
+              <th>Quality (v1 → v0.2.0)</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr class="row-save">
+              <td><strong>Lung Cancer</strong> (114,692 cells, 5 conds · dedicated A100)</td>
+              <td>1273.9s → 626.8s (<strong>2.03×</strong>)</td>
+              <td>1447.3s → 686.2s (<strong>2.11×</strong>)</td>
+              <td>364.5s → 43.2s (<strong>8.43×</strong>)</td>
+              <td><strong>2.27×</strong></td>
+              <td>Unseen WD 5.39 → <strong>4.42</strong> (paper 4.63), R² 0.647 → <strong>0.698</strong></td>
+            </tr>
+            <tr>
+              <td><strong>Dentate Gyrus</strong> (14,570 cells · A100 conc. 2)</td>
+              <td>198.2s → 118.0s (<strong>1.68×</strong>)</td>
+              <td>332.4s → 92.7s (<strong>3.59×</strong>)</td>
+              <td>25.6s → 13.6s (<strong>1.88×</strong>)</td>
+              <td><strong>2.48×</strong></td>
+              <td>WD 8.08 → <strong>8.11</strong> (paper 9.16), PCC <strong>0.991</strong></td>
+            </tr>
+            <tr>
+              <td><strong>PBMC3K</strong> (2,110 cells · A100 conc. 2)</td>
+              <td>35.3s → 27.3s (<strong>1.29×</strong>)</td>
+              <td>58.2s → 24.1s (<strong>2.42×</strong>)</td>
+              <td>5.7s → 1.5s (<strong>3.71×</strong>)</td>
+              <td><strong>1.87×</strong></td>
+              <td>WD 12.76 → <strong>12.74</strong> (paper 19.14), PCC 0.943 → <strong>0.948</strong></td>
+            </tr>
+            <tr>
+              <td><strong>Lung Atlas / PBMC</strong> (Table 2 · 3-way conc. on 1 A100)</td>
+              <td>—</td>
+              <td><strong>1.26× / 1.34×</strong></td>
+              <td><strong>5.68× / 3.52×</strong></td>
+              <td><strong>1.08× / 1.09×</strong></td>
+              <td>Heart WD 8.83 → <strong>8.20</strong>, PBMC WD 5.39 → <strong>5.30</strong></td>
+            </tr>
+            <tr>
+              <td><strong>Tabula Muris</strong> (196,311 × 22,400 · L4 22 GB / 52 GB RAM)</td>
+              <td colspan="3">Runs end-to-end inside <strong>52 GB host RAM</strong> (streaming PCA + tiled RBF-MMD ≤ 16 MB)</td>
+              <td>Bounded RAM</td>
+              <td>WD 10.65 → <strong>10.21</strong>, MMD 0.036 → <strong>0.033</strong>, R² 0.952 → <strong>0.959</strong></td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="result-heading">
+        <h3>Verified ICLR 2026 Baselines (Tables 1–5)</h3>
+        <span class="result-badge">all_regression_gates_passed: true</span>
+      </div>
       <div class="table-wrap">
         <table class="data-table">
           <thead>
@@ -697,7 +772,8 @@
               <th>Benchmark</th>
               <th>Key Metric(s)</th>
               <th>Paper Target</th>
-              <th>Colab G4 Reproduced</th>
+              <th>v1 Colab (Blackwell G4)</th>
+              <th>v0.2.0 Colab (A100 / L4)</th>
             </tr>
           </thead>
           <tbody>
@@ -706,30 +782,35 @@
               <td>WD ↓ / MMD ↓</td>
               <td>19.14/1.80 · 9.16/0.17 · 10.86/0.04</td>
               <td>12.76/0.48 · 8.08/0.11 · 10.65/0.04</td>
+              <td><strong>12.74/0.49 · 8.11/0.11 · 10.21/0.03</strong></td>
             </tr>
             <tr>
               <td><strong>Table 2</strong> (<code>heart</code> / <code>pbmc</code> / <code>lung_atlas</code>)</td>
               <td>WD ↓ / MMD ↓</td>
               <td>8.30/0.63 · 5.37/0.29 · 4.37/1.14</td>
               <td>8.83/0.64 · 5.39/0.30 · 4.42/1.16</td>
+              <td><strong>8.20/0.61 · 5.30/0.29 · 4.41/1.15</strong></td>
             </tr>
             <tr>
               <td><strong>Table 3</strong> (<code>lung_cancer</code> Seen / Unseen)</td>
               <td>WD ↓ / MMD ↓</td>
               <td>3.10/1.06 · 4.63/2.11</td>
               <td>3.07/1.08 · 5.39/2.16</td>
+              <td><strong>3.05/1.07 · 4.42/2.07</strong></td>
             </tr>
             <tr>
               <td><strong>Table 4</strong> (<code>lung_atlas</code> / <code>heart</code> / <code>pbmc</code> BEC)</td>
               <td>scIB ↑</td>
               <td>0.8128 · 0.7983 · 0.8309</td>
               <td>0.8097 · 0.8019 · 0.8125</td>
+              <td><strong>0.8080 · 0.7985 · 0.8238</strong></td>
             </tr>
             <tr>
               <td><strong>Table 5</strong> (<code>pbmc_ifn</code> 7-fold LOO Average)</td>
               <td>PCC ↑ / R² ↑ / WD ↓</td>
               <td>0.96 / 0.86 / 5.15</td>
               <td>0.943 / 0.807 / 5.77</td>
+              <td><strong>0.940 / 0.792 / 5.86</strong></td>
             </tr>
           </tbody>
         </table>
@@ -737,14 +818,35 @@
 
       <div class="code-card">
         <div class="code-card-header">
-          <span>Local CLI Quickstart (Tables 1–5)</span>
+          <span>Python API Quickstart (sc-save v0.2.0)</span>
+          <button class="copy-btn" type="button" data-copy-target="python-api-code" aria-live="polite">Copy Code</button>
+        </div>
+        <pre id="python-api-code"><code>pip install sc-save
+
+import scanpy as sc
+from sc_save import SAVE, SAVEConfig, build_gene_blocks, load_gene_embeddings
+
+adata = sc.read_h5ad("heart_raw.h5ad")
+blocks = build_gene_blocks(adata, load_gene_embeddings("GenePT_gene_protein_embedding_model_3_text.pickle"), block_size=3200)
+
+cfg = SAVEConfig.save_b(gene_block_size=3200, cond_encoding="offset")
+model = SAVE(blocks.adata, condition_cols=("batch", "cell_type"), config=cfg, device="auto")
+model.fit()
+
+gen = model.generate({"batch": "donor_1", "cell_type": "Cardiomyocyte"}, n_cells=500, steps=20)
+transferred = model.transfer(blocks.adata, target_cond={"batch": "donor_1"}, input_cond="obs")
+model.save("./outputs/save_heart_bundle")</code></pre>
+      </div>
+
+      <div class="code-card">
+        <div class="code-card-header">
+          <span>Unified CLI &amp; ICLR 2026 Reproduction (Tables 1–5)</span>
           <button class="copy-btn" type="button" data-copy-target="quickstart-code" aria-live="polite">Copy Command</button>
         </div>
-        <pre id="quickstart-code"><code>git clone https://github.com/fdu-wangfeilab/sc-save.git &amp;&amp; cd sc-save
-uv sync --extra all   # or: pip install -e ".[all]"
+        <pre id="quickstart-code"><code>pip install "sc-save[all]"
 
 # Run all 5 paper benchmarks end-to-end (or pass --tasks table2)
-python examples/reproduce_iclr2026.py \
+sc-save reproduce \
   --tasks all \
   --data-root ./data \
   --output-root ./outputs/iclr2026 \
@@ -785,6 +887,7 @@ url={https://openreview.net/forum?id=l7QEoK4uDP}
       <a href="https://openreview.net/forum?id=l7QEoK4uDP">OpenReview</a>
       <a href="https://arxiv.org/abs/2604.16776">arXiv</a>
       <a href="https://github.com/fdu-wangfeilab/sc-save">GitHub</a>
+      <a href="https://pypi.org/project/sc-save/">PyPI</a>
       <a href="https://colab.research.google.com/github/fdu-wangfeilab/sc-save/blob/main/notebooks/SAVE_ICLR2026_Reproduce_Colab.ipynb">Colab</a>
       <a href="https://github.com/fdu-wangfeilab/sc-save/blob/main/LICENSE">MIT License</a>
       <a href="https://argonx.dev/">Jiahao Li (argonx.dev)</a>

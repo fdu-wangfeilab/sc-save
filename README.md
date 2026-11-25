@@ -10,29 +10,89 @@
 
 <p>
   <a href="https://save.argonx.dev"><img src="https://img.shields.io/badge/Project_Page-save.argonx.dev-245D50?style=flat-square&labelColor=0D1117" alt="Project Page" /></a>
-  <a href="https://pypi.org/project/sc-save/"><img src="https://img.shields.io/badge/PyPI-sc--save_0.2.0-0D9488?style=flat-square&labelColor=0D1117&logo=pypi&logoColor=white" alt="PyPI sc-save" /></a>
+  <a href="https://pypi.org/project/sc-save/"><img src="https://img.shields.io/pypi/v/sc-save?style=flat-square&label=PyPI&labelColor=0D1117&color=0D9488&logo=pypi&logoColor=white" alt="PyPI sc-save" /></a>
   <a href="https://colab.research.google.com/github/fdu-wangfeilab/sc-save/blob/main/notebooks/SAVE_ICLR2026_Reproduce_Colab.ipynb"><img src="https://colab.research.google.com/assets/colab-badge.svg" alt="Open In Colab" /></a>
   <a href="https://openreview.net/forum?id=l7QEoK4uDP"><img src="https://img.shields.io/badge/ICLR_2026-OpenReview-0F766E?style=flat-square&labelColor=0D1117" alt="ICLR 2026 OpenReview" /></a>
   <a href="https://arxiv.org/abs/2604.16776"><img src="https://img.shields.io/badge/arXiv-2604.16776-10B981?style=flat-square&labelColor=0D1117&logo=arxiv&logoColor=white" alt="arXiv 2604.16776" /></a>
+  <a href="https://save.argonx.dev/#video"><img src="https://img.shields.io/badge/Overview_Video-2%3A38-1F6F5B?style=flat-square&labelColor=0D1117&logo=youtube&logoColor=white" alt="Overview Video" /></a>
+</p>
+
+<p>
+  <a href="https://github.com/fdu-wangfeilab/sc-save/stargazers"><img src="https://img.shields.io/github/stars/fdu-wangfeilab/sc-save?style=flat-square&labelColor=0D1117&color=10B981&logo=github" alt="GitHub Stars" /></a>
+  <a href="https://github.com/fdu-wangfeilab/sc-save/actions/workflows/ci.yml"><img src="https://img.shields.io/github/actions/workflow/status/fdu-wangfeilab/sc-save/ci.yml?branch=main&style=flat-square&label=CI&labelColor=0D1117" alt="CI Status" /></a>
+  <a href="https://pypi.org/project/sc-save/"><img src="https://img.shields.io/pypi/dm/sc-save?style=flat-square&label=Downloads&labelColor=0D1117&color=0F766E" alt="PyPI Downloads" /></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-1F6F5B?style=flat-square&labelColor=0D1117" alt="MIT License" /></a>
   <a href="#environment-installation"><img src="https://img.shields.io/badge/Python-3.10+-0D1117?style=flat-square&logo=python&logoColor=2DD4BF" alt="Python 3.10+" /></a>
   <a href="#environment-installation"><img src="https://img.shields.io/badge/PyTorch-%3E%3D2.2-0D1117?style=flat-square&logo=pytorch&logoColor=10B981" alt="PyTorch >= 2.2" /></a>
 </p>
 
 <p>
-  <a href="#whats-new-in-v020-efficiency-memory--package-highlights">What's New in v0.2.0</a> &middot;
+  <strong>ViT Patchify for genomics:</strong> SAVE partitions ~20,000 unordered genes into pathway-coherent <strong>Gene Blocks</strong> via LLM semantic embeddings + balanced Optimal Transport, pairing a <strong>Gene-Block Attention VAE</strong> with <strong>DiT Latent OT Flow Matching</strong> for <strong>191× faster</strong> multi-condition single-cell generation, zero-shot batch correction, and perturbation prediction — now on PyPI (<code>pip install sc-save</code>).
+</p>
+
+<p>
+  <a href="#highlights">Highlights</a> &middot;
+  <a href="#30-second-quickstart">30s Quickstart</a> &middot;
   <a href="#overview">Overview</a> &middot;
-  <a href="#python-api--unified-cli-quickstart">Python API &amp; CLI</a> &middot;
-  <a href="#llm-semantic-gene-blocks-vs-vit-patchify">LLM Blocks vs. ViT</a> &middot;
+  <a href="#whats-new-in-v020-efficiency-memory--package-highlights">v0.2.0 Highlights</a> &middot;
   <a href="#key-results">Key Results</a> &middot;
+  <a href="#python-api--unified-cli-quickstart">Python API &amp; CLI</a> &middot;
   <a href="#iclr-2026-reproduction-quickstart">Reproduce ICLR 2026</a> &middot;
   <a href="#biological-interpretability">Interpretability</a> &middot;
-  <a href="#environment-installation">Installation</a> &middot;
-  <a href="#quick-start">Usage</a> &middot;
   <a href="#citation">Citation</a>
 </p>
 
 </div>
+
+---
+
+<p align="center">
+  <a href="https://save.argonx.dev/#video">
+    <img src="docs/assets/save_preview.gif" width="96%" alt="SAVE Overview Video Preview — LLM-Guided Gene Blocks, Latent OT Flow Matching, and 191× Speedup" />
+  </a>
+</p>
+<p align="center">
+  <em>Watch the <a href="https://save.argonx.dev/#video">2:38 narrated overview video</a> &middot; Try the <a href="https://colab.research.google.com/github/fdu-wangfeilab/sc-save/blob/main/notebooks/SAVE_Quickstart_Tutorial.ipynb">Quickstart Tutorial in Colab</a> &middot; <a href="https://colab.research.google.com/github/fdu-wangfeilab/sc-save/blob/main/notebooks/SAVE_ICLR2026_Reproduce_Colab.ipynb">Reproduce ICLR 2026 Tables 1–5</a></em>
+</p>
+
+## Highlights
+
+- **LLM Semantic Gene Blocks (`O(G²) → O(L²)`, 191× Speedup):** Replaces rigid 2D image patching with 1,536-dim NCBI GenePT LLM embeddings + balanced Optimal Transport clustering, cutting single-RTX-3090 training time from **2,391.2 min (~40 h)** down to **12.5 min** (`191×`; `266×` / `9.0 min` at $K=5600$).
+- **One Unified Framework Across 8 Benchmarks:** Combines a Gene-Block Attention VAE with DiT Conditional OT Flow Matching (`AdaLN`, condition masking $p=0.6$, multi-condition CFG) to achieve SOTA multi-condition generation (1–5 covariates, including unseen combinations), up to **0.83 scIB** zero-shot batch correction, and **0.96 PCC / 0.86 $R^2$** leave-one-out perturbation prediction.
+- **Production-Ready `sc-save v0.2.0` on PyPI:** Ships a clean `sc_save` Python API and unified `sc-save` CLI with pure-PyTorch OT Flow Matching (`flow-matching`/`torchdiffeq` optional), up to **8.43× faster** generation, **196k+ cells** inside **52 GB RAM**, and **10/10** ICLR 2026 Colab validation benchmarks passed with zero regressions.
+- **Pathway-Level Biological Interpretability:** Condition-modulated Transformer attention naturally recovers tissue- and cell-type-specific gene programs (e.g., Fatty Acid $\beta$-Oxidation in cardiomyocytes) while suppressing non-discriminative background blocks.
+
+## 30-Second Quickstart
+
+```bash
+pip install sc-save        # core Python API + CLI (or: pip install "sc-save[all]")
+```
+
+```python
+import scanpy as sc
+from sc_save import SAVE, SAVEConfig, build_gene_blocks, load_gene_embeddings
+
+adata = sc.read_h5ad("heart_raw.h5ad")
+blocks = build_gene_blocks(adata, load_gene_embeddings("GenePT.pickle"), block_size=3200)
+
+model = SAVE(blocks.adata, condition_cols=("batch", "cell_type"), config=SAVEConfig.save_b(), device="auto")
+model.fit()
+
+gen = model.generate({"batch": "donor_1", "cell_type": "Cardiomyocyte"}, n_cells=500, steps=20)
+transferred = model.transfer(blocks.adata, target_cond={"batch": "donor_1"}, input_cond="obs")
+```
+
+See [Python API & Unified CLI Quickstart](#python-api--unified-cli-quickstart) for full `.save()`/`.load()`, `generate_like()`, and `sc-save` CLI usage, or jump straight to [What's New in v0.2.0](#whats-new-in-v020-efficiency-memory--package-highlights).
+
+---
+
+## Overview
+
+**SAVE** is a unified conditional generative framework for multi-condition single-cell RNA-seq modeling built around three core pillars: **LLM biological knowledge**, a **Latent Flow Matching tech stack**, and **191× training efficiency**:
+
+- **LLM Biological Knowledge (Semantic Gene Embeddings → OT Gene Blocks):** Unlike vision pixels on a regular 2D grid, genes form an unordered, sparse set. SAVE encodes curated **NCBI Gene** functional summaries using a pre-trained LLM (GenePT, 1,536-dimensional semantic embeddings) and solves iterative **Optimal Transport** clustering to partition ~20,000 genes into $L$ balanced, pathway-coherent **Gene Blocks** ($K = 3200$).
+- **Latent Flow Matching Tech Stack (Gene-Block VAE + DiT OT-FM):** Compresses structured gene blocks ($X \in \mathbb{R}^{N \times L \times K}$) into a compact biological latent space ($z \in \mathbb{R}^{N \times L \times d}$) via a Gene-Block Attention VAE, then trains a **DiT-based Conditional Optimal-Transport Flow Matching** model (`AdaLN`, independent condition masking $p = 0.6$, multi-condition Classifier-Free Guidance) in latent space—unifying 1–5 condition generation (including unseen combinations), zero-shot batch correction, and out-of-sample perturbation prediction across **8 benchmarks** with one fixed configuration.
+- **Ultra-High Efficiency (191× Speedup & 20-Step ODE Sampling):** Grouping $G \approx 19{,}112$ flat genes into $L = 6$ semantic blocks collapses self-attention complexity from $\mathcal{O}(G^2)$ to $\mathcal{O}(L^2)$, cutting single-RTX-3090 (24 GB) training time from **2,391.2 min (~40 h)** down to **12.5 min (191× speedup; 266× / 9.0 min at $K=5600$)**—and in `sc-save v0.2.0` Colab GPU validation, accelerating standalone single-GPU training + generation on `lung_cancer` by **2.27×** (**8.43×** faster generation) even on an A100 vs. the v1 Blackwell G4 baseline—while learning biologically interpretable pathway attention.
 
 ---
 
@@ -54,16 +114,6 @@
 - **Clean Python Package & CLI**: `pip install sc-save`, high-level `SAVE` / `SAVEConfig` API with `.save()`/`.load()` (`0.0` GPU reload diff), unified `sc-save` CLI, and optional collision-free `cond_encoding="offset"` mode.
 
 See [Python API & CLI Quickstart](#python-api--unified-cli-quickstart), [Verified ICLR 2026 Baselines](#verified-iclr-2026-colab-baselines-v1-g4-vs-sc-save-v020-a100l4), and [`REPRODUCIBILITY.md`](REPRODUCIBILITY.md) for code examples and complete Tables 1–5 breakdowns.
-
----
-
-## Overview
-
-**SAVE** is a unified conditional generative framework for multi-condition single-cell RNA-seq modeling built around three core pillars: **LLM biological knowledge**, a **Latent Flow Matching tech stack**, and **191× training efficiency**:
-
-- **LLM Biological Knowledge (Semantic Gene Embeddings → OT Gene Blocks):** Unlike vision pixels on a regular 2D grid, genes form an unordered, sparse set. SAVE encodes curated **NCBI Gene** functional summaries using a pre-trained LLM (GenePT, 1,536-dimensional semantic embeddings) and solves iterative **Optimal Transport** clustering to partition ~20,000 genes into $L$ balanced, pathway-coherent **Gene Blocks** ($K = 3200$).
-- **Latent Flow Matching Tech Stack (Gene-Block VAE + DiT OT-FM):** Compresses structured gene blocks ($X \in \mathbb{R}^{N \times L \times K}$) into a compact biological latent space ($z \in \mathbb{R}^{N \times L \times d}$) via a Gene-Block Attention VAE, then trains a **DiT-based Conditional Optimal-Transport Flow Matching** model (`AdaLN`, independent condition masking $p = 0.6$, multi-condition Classifier-Free Guidance) in latent space—unifying 1–5 condition generation (including unseen combinations), zero-shot batch correction, and out-of-sample perturbation prediction across **8 benchmarks** with one fixed configuration.
-- **Ultra-High Efficiency (191× Speedup & 20-Step ODE Sampling):** Grouping $G \approx 19{,}112$ flat genes into $L = 6$ semantic blocks collapses self-attention complexity from $\mathcal{O}(G^2)$ to $\mathcal{O}(L^2)$, cutting single-RTX-3090 (24 GB) training time from **2,391.2 min (~40 h)** down to **12.5 min (191× speedup; 266× / 9.0 min at $K=5600$)**—and in `sc-save v0.2.0` Colab GPU validation, accelerating standalone single-GPU training + generation on `lung_cancer` by **2.27×** (**8.43×** faster generation) even on an A100 vs. the v1 Blackwell G4 baseline—while learning biologically interpretable pathway attention.
 
 ### LLM Semantic Gene Blocks vs. ViT Patchify
 

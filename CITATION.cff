@@ -1,0 +1,70 @@
+cff-version: 1.2.0
+message: "If you use sc-save or the SAVE method in your research, please cite our ICLR 2026 paper."
+title: "SAVE: A Generalizable Framework for Multi-Condition Single-Cell Generation with Gene Block Attention"
+type: software
+version: "0.2.0"
+date-released: "2026-11-24"
+license: MIT
+repository-code: "https://github.com/fdu-wangfeilab/sc-save"
+url: "https://save.argonx.dev"
+keywords:
+  - single-cell
+  - scRNA-seq
+  - flow-matching
+  - generative-models
+  - gene-block-attention
+  - perturbation-prediction
+  - batch-effect-correction
+  - VAE
+  - DiT
+authors:
+  - family-names: Li
+    given-names: Jiahao
+    affiliation: "College of Computer Science and Artificial Intelligence, Fudan University"
+  - family-names: Dong
+    given-names: Jiayi
+    affiliation: "College of Computer Science and Artificial Intelligence, Fudan University"
+  - family-names: Ye
+    given-names: Peng
+    affiliation: "College of Computer Science and Artificial Intelligence, Fudan University"
+  - family-names: Zhou
+    given-names: Xiaochi
+    affiliation: "College of Computer Science and Artificial Intelligence, Fudan University"
+  - family-names: Lu
+    given-names: Haohai
+    affiliation: "College of Computer Science and Artificial Intelligence, Fudan University"
+  - family-names: Wang
+    given-names: Fei
+    affiliation: "College of Computer Science and Artificial Intelligence, Fudan University"
+preferred-citation:
+  type: conference-paper
+  title: "SAVE: A Generalizable Framework for Multi-Condition Single-Cell Generation with Gene Block Attention"
+  authors:
+    - family-names: Li
+      given-names: Jiahao
+      affiliation: "College of Computer Science and Artificial Intelligence, Fudan University"
+    - family-names: Dong
+      given-names: Jiayi
+      affiliation: "College of Computer Science and Artificial Intelligence, Fudan University"
+    - family-names: Ye
+      given-names: Peng
+      affiliation: "College of Computer Science and Artificial Intelligence, Fudan University"
+    - family-names: Zhou
+      given-names: Xiaochi
+      affiliation: "College of Computer Science and Artificial Intelligence, Fudan University"
+    - family-names: Lu
+      given-names: Haohai
+      affiliation: "College of Computer Science and Artificial Intelligence, Fudan University"
+    - family-names: Wang
+      given-names: Fei
+      affiliation: "College of Computer Science and Artificial Intelligence, Fudan University"
+  collection-title: "The Fourteenth International Conference on Learning Representations (ICLR 2026)"
+  year: 2026
+  url: "https://openreview.net/forum?id=l7QEoK4uDP"
+  identifiers:
+    - type: other
+      value: "arXiv:2604.16776"
+      description: "arXiv preprint"
+    - type: url
+      value: "https://arxiv.org/abs/2604.16776"
+      description: "arXiv abstract page"

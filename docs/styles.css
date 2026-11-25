@@ -278,7 +278,41 @@ pre code {
   flex-wrap: wrap;
   align-items: center;
   gap: 12px;
+  margin-bottom: 14px;
+}
+
+.install-bar {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px 12px;
+  padding: 8px 12px 8px 14px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 5px;
   margin-bottom: 0;
+}
+
+.install-label {
+  font-family: var(--mono);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--green);
+  background: var(--surface-tint);
+  border: 1px solid var(--line);
+  border-radius: 3px;
+  padding: 2px 8px;
+}
+
+.install-bar code {
+  border: 0;
+  background: transparent;
+  padding: 0;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--ink);
 }
 
 /* Opening Video Showcase */
